@@ -1909,15 +1909,13 @@ let modalPointerStartedOutside = false;
 // Record whether the initial mouse press
 // happened on the modal background.
 $("#modalLayer").addEventListener("pointerdown", (event) => {
-  modalPointerStartedOutside =
-    event.target === event.currentTarget;
+  modalPointerStartedOutside = event.target === event.currentTarget;
 });
 
 // Only close when both the press and release
 // happen directly on the modal background.
 $("#modalLayer").addEventListener("pointerup", (event) => {
-  const endedOutside =
-    event.target === event.currentTarget;
+  const endedOutside = event.target === event.currentTarget;
 
   if (modalPointerStartedOutside && endedOutside) {
     closeModal();
@@ -1930,7 +1928,6 @@ $("#modalLayer").addEventListener("pointerup", (event) => {
 $("#modalLayer").addEventListener("pointercancel", () => {
   modalPointerStartedOutside = false;
 });
-
 
 /* ==========================================
    TRIP ACTION EVENT HANDLING
@@ -2019,6 +2016,16 @@ $("#appContent").addEventListener("click", (event) => {
       break;
   }
 });
+
+/* ==========================================
+   VOYAFUNDRA FOOTER
+========================================== */
+
+const yearElement = document.getElementById("currentYear");
+
+if (yearElement) {
+  yearElement.textContent = new Date().getFullYear();
+}
 
 /* ==========================================
    INITIALIZE APPLICATION

@@ -1529,6 +1529,41 @@ body:not(.auth-pending) .app-loading-screen {
 }
 
 /* ==========================================
+   VOYAFUNDRA BRANDING
+========================================== */
+
+.brand {
+  font-size: 22px;
+  letter-spacing: -0.8px;
+}
+
+.brand span:last-child {
+  color: #69d9ce;
+}
+
+.brand-icon,
+.auth-logo,
+.loading-logo {
+  background: linear-gradient(135deg, #168a9c, #24a9ad);
+}
+
+.brand-icon {
+  box-shadow: 0 4px 12px rgba(22, 138, 156, 0.2);
+}
+
+.auth-card h1,
+.loading-content h2 {
+  font-weight: 800;
+  letter-spacing: -0.8px;
+}
+
+@media (max-width: 650px) {
+  .brand {
+    font-size: 18px;
+  }
+}
+
+/* ==========================================
    MOBILE HEADER
 ========================================== */
 
