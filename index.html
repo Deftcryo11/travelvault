@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Basic Page Settings -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#112c50" />
+
+    <!-- Website Title -->
+    <title>TravelVault | Your travel budgets, organized</title>
+
+    <!-- Website Styles -->
+    <link rel="stylesheet" href="styles.css" />
+
+    <!-- Browser Tab Icon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+
+    <!-- Supabase JavaScript Library -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+    ></script>
+
+    <!-- Supabase Configuration -->
+    <script defer src="supabase-conf.js"></script>
+
+    <!-- TravelVault Application -->
+    <script defer src="app.js"></script>
+
+    <!-- User Authentication -->
+    <script defer src="auth.js"></script>
+  </head>
+
+  <body class="auth-pending">
+    <div
+      id="appLoadingScreen"
+      class="app-loading-screen"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="loading-content">
+        <div class="loading-logo">✈</div>
+
+        <h2>TravelVault</h2>
+
+        <div class="loading-spinner"></div>
+
+        <p>Loading your travel workspace...</p>
+      </div>
+    </div>
+
+    <section id="authScreen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-logo">✈</div>
+
+        <h1>TravelVault</h1>
+
+        <p>Sign in to manage your trips and travel budgets.</p>
+
+        <form id="authForm">
+          <div class="field">
+            <label for="authEmail">Email address</label>
+
+            <input
+              id="authEmail"
+              type="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              required
+            />
+          </div>
+
+          <div class="field">
+            <label for="authPassword">Password</label>
+
+            <input
+              id="authPassword"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Enter your password"
+              minlength="6"
+              required
+            />
+          </div>
+
+          <button
+            id="signInBtn"
+            type="submit"
+            class="btn btn-primary auth-submit"
+          >
+            Sign In
+          </button>
+        </form>
+
+        <button id="signUpBtn" type="button" class="btn-link">
+          Don't have an account? Sign Up
+        </button>
+
+        <p id="authMessage" class="auth-message"></p>
+      </div>
+    </section>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="TravelVault home"
+          ><span class="brand-icon">✈</span> Travel<span>Vault</span></a
+        >
+        <div class="side-label">WORKSPACE</div>
+        <button class="nav-link active" id="allTripsNav">
+          ▦ <span>My trips</span>
+        </button>
+        <button class="nav-link" id="historyNav">
+          ◷ <span>Completed trips</span>
+        </button>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-info">
+            <div class="eyebrow">YOUR TRAVEL WORKSPACE</div>
+
+            <h1 id="pageTitle">My trips</h1>
+
+            <p id="pageSubtitle">
+              Plan smarter. Save confidently. Remember every trip.
+            </p>
+          </div>
+
+          <div class="topbar-actions">
+            <div class="topbar-actions-row">
+              <!-- Theme toggle -->
+              <button id="themeToggle" type="button" class="theme-toggle">
+                <span id="themeIcon">🌙</span>
+                <span id="themeLabel">Dark Mode</span>
+              </button>
+
+              <!-- Logout -->
+              <button
+                id="logoutBtn"
+                type="button"
+                class="btn btn-outline"
+                hidden
+              >
+                Log Out
+              </button>
+            </div>
+
+            <button
+              id="newTripBtn"
+              type="button"
+              class="btn btn-primary new-trip-btn"
+            >
+              ＋ New Trip
+            </button>
+          </div>
+        </header>
+
+        <div id="appContent"></div>
+        <footer class="footer">
+          TravelVault · All amounts are in MVR unless labeled otherwise.
+        </footer>
+      </main>
+    </div>
+    <div class="modal-layer hidden" id="modalLayer" role="presentation">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modalHeading"
+      >
+        <div class="modal-header">
+          <h2 id="modalHeading"></h2>
+          <button class="close-btn" id="modalClose" aria-label="Close">
+            ×
+          </button>
+        </div>
+        <div id="modalBody"></div>
+      </div>
+    </div>
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  </body>
+</html>
