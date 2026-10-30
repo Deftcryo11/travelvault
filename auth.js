@@ -27,6 +27,7 @@ const resetPasswordForm = document.getElementById("resetPasswordForm");
 const newPassword = document.getElementById("newPassword");
 const confirmNewPassword = document.getElementById("confirmNewPassword");
 const saveNewPasswordBtn = document.getElementById("saveNewPasswordBtn");
+const resetBackBtn = document.getElementById("resetBackBtn");
 
 // This marker prevents normal sign-in from loading private trips
 // while Supabase is processing a recovery link.
@@ -69,6 +70,23 @@ function clearRecoveryAddress() {
   // Recovery tokens should not remain in the displayed address.
   window.history.replaceState(null, "", window.location.pathname);
 }
+
+resetBackBtn.addEventListener("click", async () => {
+  recoveryActive = false;
+  recoveryVerified = false;
+  clearRecoveryAddress();
+  newPassword.value = "";
+  confirmNewPassword.value = "";
+  showSignInForm();
+  try {
+    // A recovery link can establish a temporary signed-in session.
+    await supabaseClient.auth.signOut();
+  } catch (error) {
+    showAuthMessage("Could not exit the reset session. Reload the page.", "error");
+    return;
+  }
+  showAuthMessage("You can request a fresh reset link if the previous one expired.");
+});
 
 forgotPasswordBtn.addEventListener("click", showForgotPasswordForm);
 forgotBackBtn.addEventListener("click", () => {
