@@ -15,6 +15,149 @@ const signUpBtn = document.getElementById("signUpBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 
 /* ==========================================
+   VOYAFUNDRA PASSWORD RECOVERY
+========================================== */
+
+const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
+const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+const forgotEmail = document.getElementById("forgotEmail");
+const sendResetBtn = document.getElementById("sendResetBtn");
+const forgotBackBtn = document.getElementById("forgotBackBtn");
+const resetPasswordForm = document.getElementById("resetPasswordForm");
+const newPassword = document.getElementById("newPassword");
+const confirmNewPassword = document.getElementById("confirmNewPassword");
+const saveNewPasswordBtn = document.getElementById("saveNewPasswordBtn");
+
+// This marker prevents normal sign-in from loading private trips
+// while Supabase is processing a recovery link.
+const recoveryParameters = new URLSearchParams(window.location.search);
+const recoveryHash = new URLSearchParams(window.location.hash.slice(1));
+let recoveryActive =
+  recoveryParameters.get("reset") === "1" ||
+  recoveryHash.get("type") === "recovery";
+let recoveryVerified = false;
+
+function showSignInForm() {
+  authForm.hidden = false;
+  signUpBtn.hidden = false;
+  forgotPasswordBtn.hidden = false;
+  forgotPasswordForm.hidden = true;
+  resetPasswordForm.hidden = true;
+}
+
+function showForgotPasswordForm() {
+  authForm.hidden = true;
+  signUpBtn.hidden = true;
+  forgotPasswordBtn.hidden = true;
+  resetPasswordForm.hidden = true;
+  forgotPasswordForm.hidden = false;
+  forgotEmail.value = authEmail.value.trim();
+  showAuthMessage("");
+  forgotEmail.focus();
+}
+
+function showRecoveryForm() {
+  authForm.hidden = true;
+  signUpBtn.hidden = true;
+  forgotPasswordBtn.hidden = true;
+  forgotPasswordForm.hidden = true;
+  resetPasswordForm.hidden = false;
+  setAuthenticated(false);
+}
+
+function clearRecoveryAddress() {
+  // Recovery tokens should not remain in the displayed address.
+  window.history.replaceState(null, "", window.location.pathname);
+}
+
+forgotPasswordBtn.addEventListener("click", showForgotPasswordForm);
+forgotBackBtn.addEventListener("click", () => {
+  showSignInForm();
+  showAuthMessage("");
+});
+
+forgotPasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!forgotPasswordForm.reportValidity()) return;
+
+  sendResetBtn.disabled = true;
+  showAuthMessage("Requesting a password reset...");
+
+  try {
+    const redirectTo =
+      window.location.origin + window.location.pathname + "?reset=1";
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(
+      forgotEmail.value.trim(),
+      { redirectTo },
+    );
+    if (error) throw error;
+
+    // Same message whether or not the account exists.
+    showAuthMessage(
+      "If an account exists for this email, a reset link will be sent. Check your inbox and spam folder.",
+      "success",
+    );
+  } catch (error) {
+    showAuthMessage(
+      error.message || "Could not send the reset link. Please try again.",
+      "error",
+    );
+  } finally {
+    sendResetBtn.disabled = false;
+  }
+});
+
+resetPasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!resetPasswordForm.reportValidity()) return;
+
+  if (!recoveryVerified) {
+    showAuthMessage(
+      "This reset link could not be verified. Request a new reset email.",
+      "error",
+    );
+    return;
+  }
+
+  if (newPassword.value !== confirmNewPassword.value) {
+    showAuthMessage("Passwords do not match.", "error");
+    return;
+  }
+
+  saveNewPasswordBtn.disabled = true;
+  showAuthMessage("Updating password...");
+
+  try {
+    const { error } = await supabaseClient.auth.updateUser({
+      password: newPassword.value,
+    });
+    if (error) throw error;
+
+    newPassword.value = "";
+    confirmNewPassword.value = "";
+    recoveryActive = false;
+    recoveryVerified = false;
+    clearRecoveryAddress();
+    showSignInForm();
+    // End the temporary recovery session. The user must sign in again.
+    const { error: signOutError } = await supabaseClient.auth.signOut();
+    if (signOutError) throw signOutError;
+
+    showAuthMessage(
+      "Password updated. Sign in with your new password.",
+      "success",
+    );
+  } catch (error) {
+    showAuthMessage(
+      error.message || "Password update failed. Try again.",
+      "error",
+    );
+  } finally {
+    saveNewPasswordBtn.disabled = false;
+  }
+});
+
+/* ==========================================
    SESSION SETTINGS
 ========================================== */
 
@@ -242,6 +385,21 @@ logoutBtn.addEventListener("click", () => {
 
 async function handleAuthSession(session) {
   const sequence = ++authSequence;
+
+  if (recoveryActive) {
+    // Reset links create a temporary Supabase auth session.
+    // Do not treat that session as normal app sign-in.
+    stopIdleTimer();
+    activeUserId = null;
+    clearCloudTrips();
+    showRecoveryForm();
+    if (!recoveryVerified) {
+      showAuthMessage(
+        "Verifying your reset link. If it does not complete, request a new link.",
+      );
+    }
+    return;
+  }
   const user = session?.user;
 
   if (!user) {
@@ -399,6 +557,16 @@ window.addEventListener("storage", (event) => {
 ========================================== */
 
 supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (event === "PASSWORD_RECOVERY") {
+    recoveryActive = true;
+    recoveryVerified = true;
+    setTimeout(() => {
+      showRecoveryForm();
+      showAuthMessage("Reset link verified. Enter your new password.", "success");
+    }, 0);
+    return;
+  }
+
   if (
     event === "INITIAL_SESSION" ||
     event === "SIGNED_IN" ||
