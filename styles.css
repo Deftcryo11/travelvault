@@ -1584,3 +1584,47 @@ body:not(.auth-pending) .app-loading-screen {
     width: 100%;
   }
 }
+
+
+/* ==========================================
+   VOYAFUNDRA PASSWORD RECOVERY
+========================================== */
+
+.auth-card .auth-extra-form {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.auth-card .auth-extra-form h2,
+.auth-card .auth-extra-form > p {
+  text-align: center;
+}
+
+.auth-card .auth-extra-form h2 {
+  font-size: 21px;
+  margin-bottom: 8px;
+}
+
+.auth-card .auth-extra-form > p {
+  margin-bottom: 20px;
+}
+
+.auth-recovery-link {
+  display: block;
+  margin: 0 auto 8px;
+  min-height: 40px;
+}
+
+.auth-card .auth-extra-form button {
+  min-height: 44px;
+}
+
+.auth-card .auth-extra-form .field input {
+  width: 100%;
+  font-size: 16px;
+}
+
+@media (max-width: 700px) {
+  .auth-card .auth-extra-form { margin-top: 14px; }
+  .auth-card .auth-extra-form .auth-submit { width: 100%; }
+}
