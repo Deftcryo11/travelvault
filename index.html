@@ -96,6 +96,41 @@
           Don't have an account? Sign Up
         </button>
 
+
+        <button id="forgotPasswordBtn" type="button" class="btn-link auth-recovery-link">
+          Forgot password?
+        </button>
+
+        <form id="forgotPasswordForm" class="auth-extra-form" hidden>
+          <h2>Reset your password</h2>
+          <p>Enter your account email and we'll send a reset link.</p>
+          <div class="field">
+            <label for="forgotEmail">Email address</label>
+            <input id="forgotEmail" type="email" autocomplete="email" required />
+          </div>
+          <button id="sendResetBtn" type="submit" class="btn btn-primary auth-submit">
+            Send reset link
+          </button>
+          <button id="forgotBackBtn" type="button" class="btn-link">Back to sign in</button>
+        </form>
+
+        <form id="resetPasswordForm" class="auth-extra-form" hidden>
+          <h2>Choose a new password</h2>
+          <p>Use at least 8 characters.</p>
+          <div class="field">
+            <label for="newPassword">New password</label>
+            <input id="newPassword" type="password" autocomplete="new-password" minlength="8" required />
+          </div>
+          <div class="field">
+            <label for="confirmNewPassword">Confirm new password</label>
+            <input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="8" required />
+          </div>
+          <button id="saveNewPasswordBtn" type="submit" class="btn btn-primary auth-submit">
+            Update password
+          </button>
+          <button id="resetBackBtn" type="button" class="btn-link">Back to sign in</button>
+        </form>
+
         <p id="authMessage" class="auth-message"></p>
       </div>
     </section>
