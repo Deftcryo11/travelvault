@@ -1,0 +1,19 @@
+{
+  "name": "Voyafundra - Travel Planner",
+  "short_name": "Voyafundra",
+  "description": "Plan journeys, compare travel costs and track savings.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#102b4e",
+  "theme_color": "#102b4e",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
