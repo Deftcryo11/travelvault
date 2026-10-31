@@ -42,6 +42,21 @@
   </head>
 
   <body class="auth-pending">
+    <script>
+      // Set the theme before the loading screen paints.
+      // Old fixed-theme preferences do not override the new device default.
+      (() => {
+        let mode = "system";
+        try {
+          const saved = localStorage.getItem("travelvault-theme-mode-v2");
+          if (saved === "light" || saved === "dark") mode = saved;
+        } catch {}
+        const dark = mode === "dark" ||
+          (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.body.classList.toggle("dark-mode", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
     <div
       id="appLoadingScreen"
       class="app-loading-screen"
