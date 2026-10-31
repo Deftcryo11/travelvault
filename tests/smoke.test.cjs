@@ -56,3 +56,18 @@ test("cloud refresh refuses to discard failed saves", () => {
   assert.match(app, /async function refreshCloudTripsSafely/);
   assert.match(app, /if \(error\) throw new Error/);
 });
+
+test("update prompt checks deployed code and guards pending trip saves", () => {
+  const html = read("index.html");
+  for (const id of ["versionUpdateNotice", "applyVersionUpdate", "deferVersionUpdate"]) {
+    assert.match(html, new RegExp('id="' + id + '"'));
+  }
+  const code = read("pwa-updates.js");
+  assert.match(code, /cache: "no-store"/);
+  assert.match(code, /cloudSaveError/);
+  assert.match(code, /cloudWritesPending/);
+  assert.match(code, /waitForCloudSaves/);
+  assert.match(code, /modalLayer/);
+  assert.match(code, /window\.location\.reload/);
+  assert.doesNotMatch(code, /skipWaiting|caches\.open|supabase\.co/);
+});
