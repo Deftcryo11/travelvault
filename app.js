@@ -185,6 +185,43 @@ async function loadCloudTrips(user) {
 }
 
 /**
+ * Refresh the current user's trips without clearing existing data first.
+ * Read failures leave the dashboard intact; account transitions cancel refresh.
+ * Call only when there are no pending or failed local writes.
+ */
+async function refreshCloudTripsSafely(userId) {
+  if (!cloudReady || !cloudUserId || cloudUserId !== userId ||
+      cloudWritesPending > 0 || cloudSaveError) {
+    throw new Error("Finish saving changes before refreshing.");
+  }
+
+  const epoch = cloudEpoch;
+  const { data, error } = await supabaseClient
+    .from("trips")
+    .select("id, trip_data")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Could not refresh trips: ${error.message}`);
+
+  if (epoch !== cloudEpoch || cloudUserId !== userId || !cloudReady) {
+    throw new Error("Your account session changed during refresh.");
+  }
+
+  if (cloudWritesPending > 0 || cloudSaveError) {
+    throw new Error("Trips changed while refreshing. Try again after saving.");
+  }
+
+  trips = (data || [])
+    .filter((row) => row.trip_data && typeof row.trip_data === "object")
+    .map((row) => ({ ...row.trip_data, id: row.id }));
+  selectedTripId = null;
+  currentView = "all";
+  render();
+  return true;
+}
+
+/**
  * Clear all trip information from application memory.
  *
  * This is called when the user signs out.
