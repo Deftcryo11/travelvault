@@ -12,6 +12,7 @@
     <!-- Website Styles -->
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="mobile.css" />
+    <link rel="stylesheet" href="experience.css" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Voyafundra" />
@@ -35,6 +36,7 @@
     <!-- User Authentication -->
     <script defer src="auth.js"></script>
     <script defer src="mobile.js"></script>
+    <script defer src="experience.js"></script>
   </head>
 
   <body class="auth-pending">
@@ -195,6 +197,25 @@
           </div>
         </header>
 
+        <!-- Penvoria-inspired cloud status: read-only until a user explicitly refreshes. -->
+        <section class="cloud-toolbar" aria-label="Cloud synchronization">
+          <div class="cloud-status" role="status" aria-live="polite">
+            <span class="cloud-status-indicator" id="cloudStatusIndicator" aria-hidden="true"></span>
+            <span id="cloudStatusText">Checking cloud connection...</span>
+          </div>
+          <div class="cloud-toolbar-actions">
+            <button class="btn btn-outline cloud-refresh" id="refreshTripsBtn" type="button">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 11a8 8 0 1 0-2.2 5.6"/><path d="M20 4v7h-7"/>
+              </svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </section>
+        <div class="connection-banner" id="connectionBanner" role="status" hidden>
+          You're offline. Cloud changes can't be saved or refreshed until you reconnect.
+        </div>
+
         <div id="appContent"></div>
 
         <footer class="footer">
@@ -220,9 +241,18 @@
       </div>
     </div>
     <nav id="mobileNav" class="mobile-nav" aria-label="Mobile navigation" hidden>
-      <button type="button" class="mobile-nav-item active" data-mobile-action="trips" aria-current="page"><span class="mobile-nav-icon" aria-hidden="true">⌂</span><span>My Trips</span></button>
-      <button type="button" class="mobile-nav-item" data-mobile-action="new"><span class="mobile-nav-icon" aria-hidden="true">＋</span><span>New Trip</span></button>
-      <button type="button" class="mobile-nav-item" data-mobile-action="history"><span class="mobile-nav-icon" aria-hidden="true">◷</span><span>Completed</span></button>
+      <button type="button" class="mobile-nav-item active" data-mobile-action="trips" aria-label="My Trips" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span>My Trips</span>
+      </button>
+      <button type="button" class="mobile-nav-item" data-mobile-action="new" aria-label="New Trip">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/></svg>
+        <span>New Trip</span>
+      </button>
+      <button type="button" class="mobile-nav-item" data-mobile-action="history" aria-label="Completed Trips">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v5h5"/><path d="M4 10a9 9 0 1 1 2 8"/><path d="M12 7v5l3 2"/></svg>
+        <span>Completed</span>
+      </button>
     </nav>
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   </body>
