@@ -82,3 +82,17 @@ test("theme follows device by default and can be manually overridden", () => {
   assert.match(app, /mode === "light" \? "dark" : "system"/);
   assert.match(html, /prefers-color-scheme: dark/);
 });
+
+test("mobile account actions and two-tab navigation retain original controls", () => {
+  const html = read("index.html");
+  const mobile = read("mobile.js");
+  const css = read("mobile.css");
+  assert.match(html, /id="appSidebar"/);
+  assert.match(html, /id="accountActions"/);
+  assert.match(html, /id="newTripBtn"/);
+  assert.doesNotMatch(html, /data-mobile-action="new"/);
+  assert.match(mobile, /sidebar\.appendChild\(actions\)/);
+  assert.match(mobile, /originalParent\.insertBefore\(actions/);
+  assert.match(css, /repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /#appSidebar #accountActions/);
+});
