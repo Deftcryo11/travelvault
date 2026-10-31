@@ -38,6 +38,7 @@
     <script defer src="auth.js"></script>
     <script defer src="mobile.js"></script>
     <script defer src="experience.js"></script>
+    <script defer src="pwa-updates.js"></script>
   </head>
 
   <body class="auth-pending">
@@ -256,6 +257,15 @@
         <span>Completed</span>
       </button>
     </nav>
+    <section id="versionUpdateNotice" class="version-update-notice" aria-label="Application update" aria-live="polite" hidden>
+      <strong>Voyafundra update available</strong>
+      <p>A newer version is ready. Save your work before updating.</p>
+      <div class="version-update-actions">
+        <button type="button" class="btn btn-primary" id="applyVersionUpdate">Update now</button>
+        <button type="button" class="btn btn-outline" id="deferVersionUpdate">Later</button>
+      </div>
+      <p id="versionUpdateMessage" class="version-update-message" role="status"></p>
+    </section>
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   </body>
 </html>
