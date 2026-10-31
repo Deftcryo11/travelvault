@@ -1900,37 +1900,69 @@ function initializeTheme() {
   const toggle = $("#themeToggle");
   const icon = $("#themeIcon");
   const label = $("#themeLabel");
-
   if (!toggle) return;
 
-  function applyTheme(theme) {
-    const dark = theme === "dark";
+  // New preference key intentionally starts in "system" mode even if an
+  // older release saved a fixed light/dark preference.
+  const systemThemeKey = "travelvault-theme-mode-v2";
+  const deviceTheme = window.matchMedia("(prefers-color-scheme: dark)");
 
-    document.body.classList.toggle("dark-mode", dark);
-
-    if (icon) {
-      icon.textContent = dark ? "☀️" : "🌙";
+  function readMode() {
+    try {
+      const value = localStorage.getItem(systemThemeKey);
+      return ["system", "light", "dark"].includes(value) ? value : "system";
+    } catch {
+      return "system";
     }
-
-    if (label) {
-      label.textContent = dark ? "Light Mode" : "Dark Mode";
-    }
-
-    toggle.setAttribute("aria-pressed", String(dark));
   }
 
-  const savedTheme = localStorage.getItem(THEME_KEY);
+  let mode = readMode();
 
-  applyTheme(savedTheme === "dark" ? "dark" : "light");
+  function applyTheme() {
+    const dark = mode === "system" ? deviceTheme.matches : mode === "dark";
+    document.body.classList.toggle("dark-mode", dark);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+
+    if (icon) icon.textContent = mode === "system" ? "◐" : dark ? "☀️" : "🌙";
+    if (label) {
+      label.textContent = mode === "system" ? "Device Theme" :
+        mode === "dark" ? "Dark Mode" : "Light Mode";
+    }
+    toggle.setAttribute("aria-label", "Theme: " +
+      (mode === "system" ? "follow device" : mode) +
+      ". Activate to change theme mode.");
+    toggle.setAttribute("title", "Theme mode: " + mode);
+    toggle.setAttribute("aria-pressed", String(mode !== "system"));
+  }
 
   toggle.addEventListener("click", () => {
-    const isDark = document.body.classList.contains("dark-mode");
-
-    const newTheme = isDark ? "light" : "dark";
-
-    localStorage.setItem(THEME_KEY, newTheme);
-    applyTheme(newTheme);
+    // Device → Light → Dark → Device.
+    mode = mode === "system" ? "light" : mode === "light" ? "dark" : "system";
+    try {
+      localStorage.setItem(systemThemeKey, mode);
+    } catch {
+      // Theme still works for the current session if storage is unavailable.
+    }
+    applyTheme();
   });
+
+  // Keep following phone/PC changes unless the user chose an override.
+  const onDeviceChange = () => {
+    if (mode === "system") applyTheme();
+  };
+  if (typeof deviceTheme.addEventListener === "function") {
+    deviceTheme.addEventListener("change", onDeviceChange);
+  } else if (typeof deviceTheme.addListener === "function") {
+    deviceTheme.addListener(onDeviceChange);
+  }
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === systemThemeKey) {
+      mode = readMode();
+      applyTheme();
+    }
+  });
+  applyTheme();
 }
 
 /* ==========================================
@@ -2086,7 +2118,7 @@ if (yearElement) {
 /* ==========================================
    INITIALIZE APPLICATION
 ========================================== */
-// Load the saved light/dark preference.
+// Follow the device theme by default, with optional manual overrides.
 initializeTheme();
 
 // Show an empty application until authentication
