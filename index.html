@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="experience.css" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Voyafundra" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
@@ -123,6 +124,7 @@
         </form>
 
         <form id="resetPasswordForm" class="auth-extra-form" hidden>
+          <input type="email" name="username" autocomplete="username" aria-label="Account email" hidden />
           <h2>Choose a new password</h2>
           <p>Use at least 8 characters.</p>
           <div class="field">
