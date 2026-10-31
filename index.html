@@ -162,7 +162,7 @@
     </section>
 
     <div class="app-shell">
-      <aside class="sidebar">
+      <aside class="sidebar" id="appSidebar">
         <a class="brand" href="#" aria-label="Voyafundra home"
           ><span class="brand-icon">✈</span> Voya<span>fundra</span></a
         >
@@ -187,7 +187,7 @@
           </div>
 
           <div class="topbar-actions">
-            <div class="topbar-actions-row">
+            <div class="topbar-actions-row" id="accountActions">
               <!-- Theme toggle -->
               <button id="themeToggle" type="button" class="theme-toggle">
                 <span id="themeIcon">🌙</span>
@@ -197,6 +197,7 @@
               <!-- Logout -->
               <button
                 id="logoutBtn"
+                aria-label="Log out"
                 type="button"
                 class="btn btn-outline"
                 hidden
@@ -262,10 +263,6 @@
       <button type="button" class="mobile-nav-item active" data-mobile-action="trips" aria-label="My Trips" aria-current="page">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         <span>My Trips</span>
-      </button>
-      <button type="button" class="mobile-nav-item" data-mobile-action="new" aria-label="New Trip">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/></svg>
-        <span>New Trip</span>
       </button>
       <button type="button" class="mobile-nav-item" data-mobile-action="history" aria-label="Completed Trips">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v5h5"/><path d="M4 10a9 9 0 1 1 2 8"/><path d="M12 7v5l3 2"/></svg>
