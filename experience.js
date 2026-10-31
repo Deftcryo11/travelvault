@@ -61,7 +61,7 @@
       if (error || !data.user || data.user.id !== cloudUserId) {
         throw new Error("Your session has changed. Sign in again.");
       }
-      const loaded = await loadCloudTrips(data.user);
+      const loaded = await refreshCloudTripsSafely(data.user.id);
       if (!loaded) throw new Error("A different account session interrupted refresh.");
       view.setStatus("saved", "Trips refreshed from the cloud");
     } catch (error) {
