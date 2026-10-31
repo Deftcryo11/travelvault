@@ -29,6 +29,9 @@ let cloudEpoch = 0;
 
 // Ensures cloud writes execute in order.
 let cloudWriteQueue = Promise.resolve();
+// Guard against refreshing or closing with pending/failed saves.
+let cloudWritesPending = 0;
+let cloudSaveError = null;
 
 /* ==========================================
    GENERAL HELPERS
@@ -139,6 +142,7 @@ async function loadCloudTrips(user) {
 
   cloudUserId = user.id;
   cloudReady = false;
+  window.voyafundraUX?.setStatus("loading", "Loading your trips...");
 
   // Immediately clear data from any previous account.
   trips = [];
@@ -172,6 +176,8 @@ async function loadCloudTrips(user) {
     }));
 
   cloudReady = true;
+  cloudSaveError = null;
+  window.voyafundraUX?.setStatus("saved", "Trips up to date");
 
   render();
 
@@ -189,6 +195,8 @@ function clearCloudTrips() {
 
   cloudUserId = null;
   cloudReady = false;
+  cloudSaveError = null;
+  window.voyafundraUX?.setStatus("loading", "Sign in to sync trips");
 
   trips = [];
   selectedTripId = null;
@@ -216,6 +224,8 @@ function saveTrips() {
 
   // Capture an independent copy at save time.
   const snapshot = JSON.parse(JSON.stringify(trips));
+  cloudWritesPending += 1;
+  window.voyafundraUX?.setStatus("saving", "Saving trips...");
 
   cloudWriteQueue = cloudWriteQueue
     .catch(() => {
@@ -286,7 +296,9 @@ function saveTrips() {
 
       // Only report success for the current account.
       if (epoch === cloudEpoch && userId === cloudUserId) {
-        console.log("TravelVault: Trips synchronized with Supabase.");
+        cloudSaveError = null;
+        window.voyafundraUX?.setStatus("saved", "All changes saved");
+        console.log("Voyafundra: Trips synchronized with Supabase.");
       }
     });
 
@@ -294,12 +306,19 @@ function saveTrips() {
   // as successful saves.
   cloudWriteQueue.catch((error) => {
     if (epoch === cloudEpoch && userId === cloudUserId) {
-      console.error("TravelVault cloud save failed:", error);
-
+      cloudSaveError = error;
+      console.error("Voyafundra cloud save failed:", error);
+      window.voyafundraUX?.setStatus("error", "Save failed — changes not confirmed");
       notify(
-        "Cloud save failed. Keep this tab open and " +
-          "export a backup before refreshing.",
+        "Cloud save failed. Keep this tab open and retry saving before refreshing.",
       );
+    }
+  }).finally(() => {
+    cloudWritesPending = Math.max(0, cloudWritesPending - 1);
+    // A newer save can still be running; do not hide its pending state.
+    if (epoch === cloudEpoch && userId === cloudUserId &&
+        cloudWritesPending === 0 && !cloudSaveError) {
+      window.voyafundraUX?.setStatus("saved", "All changes saved");
     }
   });
 
