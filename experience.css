@@ -1,0 +1,95 @@
+/* Penvoria-inspired usability enhancements.
+   Deliberately reuse Voyafundra's existing colors and theme variables. */
+.cloud-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: -7px 0 20px;
+  padding: 11px 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.cloud-status { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.cloud-status-indicator { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+.cloud-status[data-state="saved"] .cloud-status-indicator { background: var(--positive); }
+.cloud-status[data-state="saving"] .cloud-status-indicator,
+.cloud-status[data-state="loading"] .cloud-status-indicator { background: var(--primary); }
+.cloud-status[data-state="error"] .cloud-status-indicator,
+.cloud-status[data-state="offline"] .cloud-status-indicator { background: var(--negative); }
+.cloud-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.cloud-toolbar .cloud-refresh { min-height: 39px; display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; }
+.cloud-toolbar .cloud-refresh:disabled { opacity: .6; }
+.connection-banner {
+  margin: -8px 0 18px;
+  padding: 11px 14px;
+  background: var(--surface);
+  border: 1px solid var(--negative);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mobile-nav-item svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+@media (max-width: 700px) {
+  .cloud-toolbar { margin: 0 0 16px; padding: 10px 12px; gap: 8px; }
+  .cloud-toolbar-actions { margin-left: auto; }
+  .cloud-toolbar .cloud-refresh { min-height: 44px; }
+  .mobile-nav-item { transition: color .15s ease, background-color .15s ease; }
+  .mobile-nav-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .mobile-nav-item:active { background: var(--surface-hover); }
+  .modal-layer:not(.hidden) { overscroll-behavior: contain; }
+  .modal-layer:not(.hidden) .modal { overscroll-behavior-y: contain; }
+  body:has(.modal-layer:not(.hidden)) { overflow: hidden; }
+  .auth-card input, .modal input, .modal textarea, .modal select { font-size: 16px; }
+  .modal-header { background: var(--surface); }
+}
+@media (max-width: 700px) and (display-mode: standalone) {
+  /* iPhone Home Screen mode: keep scrolling inside app content, not under the tab bar. */
+  html, body { height: 100%; }
+  body.authenticated:not(:has(.modal-layer:not(.hidden))) .app-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+  body.authenticated:not(:has(.modal-layer:not(.hidden))) .main {
+    height: calc(100dvh - 60px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    padding-bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+  }
+  body:has(.modal-layer:not(.hidden)) .main { overflow: hidden; }
+}
+
+/* Penvoria-style safe update prompt. Uses existing Voyafundra palette. */
+.version-update-notice {
+  position: fixed;
+  z-index: 110;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: 16px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 17px 18px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .18);
+}
+.version-update-notice[hidden] { display: none !important; }
+.version-update-notice strong { display: block; font-size: 15px; }
+.version-update-notice p { font-size: 13px; margin: 8px 0; }
+.version-update-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+.version-update-actions .btn { min-height: 42px; flex: 1; }
+.version-update-message { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .version-update-notice { left: 12px; right: 12px; width: auto; }
+}

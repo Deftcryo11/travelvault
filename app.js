@@ -29,6 +29,9 @@ let cloudEpoch = 0;
 
 // Ensures cloud writes execute in order.
 let cloudWriteQueue = Promise.resolve();
+// Guard against refreshing or closing with pending/failed saves.
+let cloudWritesPending = 0;
+let cloudSaveError = null;
 
 /* ==========================================
    GENERAL HELPERS
@@ -139,6 +142,7 @@ async function loadCloudTrips(user) {
 
   cloudUserId = user.id;
   cloudReady = false;
+  window.voyafundraUX?.setStatus("loading", "Loading your trips...");
 
   // Immediately clear data from any previous account.
   trips = [];
@@ -172,9 +176,48 @@ async function loadCloudTrips(user) {
     }));
 
   cloudReady = true;
+  cloudSaveError = null;
+  window.voyafundraUX?.setStatus("saved", "Trips up to date");
 
   render();
 
+  return true;
+}
+
+/**
+ * Refresh the current user's trips without clearing existing data first.
+ * Read failures leave the dashboard intact; account transitions cancel refresh.
+ * Call only when there are no pending or failed local writes.
+ */
+async function refreshCloudTripsSafely(userId) {
+  if (!cloudReady || !cloudUserId || cloudUserId !== userId ||
+      cloudWritesPending > 0 || cloudSaveError) {
+    throw new Error("Finish saving changes before refreshing.");
+  }
+
+  const epoch = cloudEpoch;
+  const { data, error } = await supabaseClient
+    .from("trips")
+    .select("id, trip_data")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Could not refresh trips: ${error.message}`);
+
+  if (epoch !== cloudEpoch || cloudUserId !== userId || !cloudReady) {
+    throw new Error("Your account session changed during refresh.");
+  }
+
+  if (cloudWritesPending > 0 || cloudSaveError) {
+    throw new Error("Trips changed while refreshing. Try again after saving.");
+  }
+
+  trips = (data || [])
+    .filter((row) => row.trip_data && typeof row.trip_data === "object")
+    .map((row) => ({ ...row.trip_data, id: row.id }));
+  selectedTripId = null;
+  currentView = "all";
+  render();
   return true;
 }
 
@@ -189,6 +232,8 @@ function clearCloudTrips() {
 
   cloudUserId = null;
   cloudReady = false;
+  cloudSaveError = null;
+  window.voyafundraUX?.setStatus("loading", "Sign in to sync trips");
 
   trips = [];
   selectedTripId = null;
@@ -216,6 +261,8 @@ function saveTrips() {
 
   // Capture an independent copy at save time.
   const snapshot = JSON.parse(JSON.stringify(trips));
+  cloudWritesPending += 1;
+  window.voyafundraUX?.setStatus("saving", "Saving trips...");
 
   cloudWriteQueue = cloudWriteQueue
     .catch(() => {
@@ -286,7 +333,9 @@ function saveTrips() {
 
       // Only report success for the current account.
       if (epoch === cloudEpoch && userId === cloudUserId) {
-        console.log("TravelVault: Trips synchronized with Supabase.");
+        cloudSaveError = null;
+        window.voyafundraUX?.setStatus("saved", "All changes saved");
+        console.log("Voyafundra: Trips synchronized with Supabase.");
       }
     });
 
@@ -294,12 +343,19 @@ function saveTrips() {
   // as successful saves.
   cloudWriteQueue.catch((error) => {
     if (epoch === cloudEpoch && userId === cloudUserId) {
-      console.error("TravelVault cloud save failed:", error);
-
+      cloudSaveError = error;
+      console.error("Voyafundra cloud save failed:", error);
+      window.voyafundraUX?.setStatus("error", "Save failed — changes not confirmed");
       notify(
-        "Cloud save failed. Keep this tab open and " +
-          "export a backup before refreshing.",
+        "Cloud save failed. Keep this tab open and retry saving before refreshing.",
       );
+    }
+  }).finally(() => {
+    cloudWritesPending = Math.max(0, cloudWritesPending - 1);
+    // A newer save can still be running; do not hide its pending state.
+    if (epoch === cloudEpoch && userId === cloudUserId &&
+        cloudWritesPending === 0 && !cloudSaveError) {
+      window.voyafundraUX?.setStatus("saved", "All changes saved");
     }
   });
 
@@ -1844,37 +1900,69 @@ function initializeTheme() {
   const toggle = $("#themeToggle");
   const icon = $("#themeIcon");
   const label = $("#themeLabel");
-
   if (!toggle) return;
 
-  function applyTheme(theme) {
-    const dark = theme === "dark";
+  // New preference key intentionally starts in "system" mode even if an
+  // older release saved a fixed light/dark preference.
+  const systemThemeKey = "travelvault-theme-mode-v2";
+  const deviceTheme = window.matchMedia("(prefers-color-scheme: dark)");
 
-    document.body.classList.toggle("dark-mode", dark);
-
-    if (icon) {
-      icon.textContent = dark ? "☀️" : "🌙";
+  function readMode() {
+    try {
+      const value = localStorage.getItem(systemThemeKey);
+      return ["system", "light", "dark"].includes(value) ? value : "system";
+    } catch {
+      return "system";
     }
-
-    if (label) {
-      label.textContent = dark ? "Light Mode" : "Dark Mode";
-    }
-
-    toggle.setAttribute("aria-pressed", String(dark));
   }
 
-  const savedTheme = localStorage.getItem(THEME_KEY);
+  let mode = readMode();
 
-  applyTheme(savedTheme === "dark" ? "dark" : "light");
+  function applyTheme() {
+    const dark = mode === "system" ? deviceTheme.matches : mode === "dark";
+    document.body.classList.toggle("dark-mode", dark);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+
+    if (icon) icon.textContent = mode === "system" ? "◐" : dark ? "☀️" : "🌙";
+    if (label) {
+      label.textContent = mode === "system" ? "Device Theme" :
+        mode === "dark" ? "Dark Mode" : "Light Mode";
+    }
+    toggle.setAttribute("aria-label", "Theme: " +
+      (mode === "system" ? "follow device" : mode) +
+      ". Activate to change theme mode.");
+    toggle.setAttribute("title", "Theme mode: " + mode);
+    toggle.setAttribute("aria-pressed", String(mode !== "system"));
+  }
 
   toggle.addEventListener("click", () => {
-    const isDark = document.body.classList.contains("dark-mode");
-
-    const newTheme = isDark ? "light" : "dark";
-
-    localStorage.setItem(THEME_KEY, newTheme);
-    applyTheme(newTheme);
+    // Device → Light → Dark → Device.
+    mode = mode === "system" ? "light" : mode === "light" ? "dark" : "system";
+    try {
+      localStorage.setItem(systemThemeKey, mode);
+    } catch {
+      // Theme still works for the current session if storage is unavailable.
+    }
+    applyTheme();
   });
+
+  // Keep following phone/PC changes unless the user chose an override.
+  const onDeviceChange = () => {
+    if (mode === "system") applyTheme();
+  };
+  if (typeof deviceTheme.addEventListener === "function") {
+    deviceTheme.addEventListener("change", onDeviceChange);
+  } else if (typeof deviceTheme.addListener === "function") {
+    deviceTheme.addListener(onDeviceChange);
+  }
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === systemThemeKey) {
+      mode = readMode();
+      applyTheme();
+    }
+  });
+  applyTheme();
 }
 
 /* ==========================================
@@ -2030,7 +2118,7 @@ if (yearElement) {
 /* ==========================================
    INITIALIZE APPLICATION
 ========================================== */
-// Load the saved light/dark preference.
+// Follow the device theme by default, with optional manual overrides.
 initializeTheme();
 
 // Show an empty application until authentication
