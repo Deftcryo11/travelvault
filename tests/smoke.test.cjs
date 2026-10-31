@@ -71,3 +71,14 @@ test("update prompt checks deployed code and guards pending trip saves", () => {
   assert.match(code, /window\.location\.reload/);
   assert.doesNotMatch(code, /skipWaiting|caches\.open|supabase\.co/);
 });
+
+test("theme follows device by default and can be manually overridden", () => {
+  const app = read("app.js");
+  const html = read("index.html");
+  assert.match(app, /prefers-color-scheme: dark/);
+  assert.match(app, /travelvault-theme-mode-v2/);
+  assert.match(app, /mode === "system" \? deviceTheme\.matches/);
+  assert.match(app, /deviceTheme\.addEventListener\("change"/);
+  assert.match(app, /mode === "light" \? "dark" : "system"/);
+  assert.match(html, /prefers-color-scheme: dark/);
+});
