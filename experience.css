@@ -69,3 +69,27 @@
   }
   body:has(.modal-layer:not(.hidden)) .main { overflow: hidden; }
 }
+
+/* Penvoria-style safe update prompt. Uses existing Voyafundra palette. */
+.version-update-notice {
+  position: fixed;
+  z-index: 110;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: 16px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 17px 18px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .18);
+}
+.version-update-notice[hidden] { display: none !important; }
+.version-update-notice strong { display: block; font-size: 15px; }
+.version-update-notice p { font-size: 13px; margin: 8px 0; }
+.version-update-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+.version-update-actions .btn { min-height: 42px; flex: 1; }
+.version-update-message { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .version-update-notice { left: 12px; right: 12px; width: auto; }
+}
