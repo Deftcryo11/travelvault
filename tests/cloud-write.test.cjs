@@ -70,7 +70,7 @@ function setup({ rows = [], trips = [] } = {}) {
     let cloudReady = true;
     let cloudUserId = "test-user";
     let cloudEpoch = 1;
-    let cloudTripVersions = new Map(db.records.entries().map(([id, row]) => [id, row.updated_at]));
+    let cloudTripVersions = new Map(Array.from(db.records.entries(), ([id, row]) => [id, row.updated_at]));
     let cloudWriteQueue = Promise.resolve();
     let cloudWritesPending = 0;
     let cloudSaveError = null;
