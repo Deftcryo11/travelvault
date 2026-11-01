@@ -333,12 +333,13 @@ function saveTrips(tripId, options = {}) {
       newVersion = data[0].updated_at;
     }
 
-    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return false;
     if (deleting) cloudTripVersions.delete(tripId);
     else cloudTripVersions.set(tripId, newVersion);
     cloudUnsavedTripIds.delete(tripId);
     if (cloudUnsavedTripIds.size === 0) cloudSaveError = null;
     console.log("Voyafundra: Trip change confirmed by Supabase.");
+    return true;
   });
 
   cloudWriteQueue = write;
@@ -358,7 +359,7 @@ function saveTrips(tripId, options = {}) {
       window.voyafundraUX?.setStatus("saved", "All changes saved");
     }
   });
-  return true;
+  return write;
 }
 
 /**
@@ -1883,12 +1884,27 @@ function changeTripStatus(trip) {
 function confirmRemove(message, callback, tripId, options = {}) {
   if (!window.confirm(message)) return;
 
+  if (options.deleteTrip) {
+    // Keep the complete trip on screen until Supabase confirms the delete.
+    // If a newer version exists on another device, leave this copy intact.
+    const pending = saveTrips(tripId, { deleteTrip: true });
+    if (!pending) return;
+    notify("Deleting trip from the cloud...");
+    void pending.then((confirmed) => {
+      if (!confirmed) return;
+      callback();
+      render();
+      notify("Trip deleted.");
+    }).catch(() => {
+      notify("Deletion not confirmed. Your trip is still available.");
+    });
+    return;
+  }
+
   callback();
-
-  saveTrips(tripId, options);
+  saveTrips(tripId);
   render();
-
-  notify("Deleted locally; synchronizing...");
+  notify("Change recorded; synchronizing...");
 }
 
 /* ==========================================
