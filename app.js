@@ -38,6 +38,8 @@ let cloudTripVersions = new Map();
 let cloudUnsavedTripIds = new Set();
 // Distinguishes successive saves for the same trip while writes are queued.
 let cloudTripSaveSequence = new Map();
+// Invalidates an in-flight refresh if a new local write is queued.
+let cloudWriteGeneration = 0;
 
 /* ==========================================
    GENERAL HELPERS
@@ -198,13 +200,18 @@ async function loadCloudTrips(user) {
  * Read failures leave the dashboard intact; account transitions cancel refresh.
  * Call only when there are no pending or failed local writes.
  */
-async function refreshCloudTripsSafely(userId) {
+async function refreshCloudTripsSafely(userId, options = {}) {
+  // Failed edits are never discarded by normal Refresh. The recovery panel
+  // requires explicit confirmation to opt into discarding local changes.
+  const discardUnsaved = options.discardUnsaved === true;
   if (!cloudReady || !cloudUserId || cloudUserId !== userId ||
-      cloudWritesPending > 0 || cloudSaveError) {
-    throw new Error("Finish saving changes before refreshing.");
+      cloudWritesPending > 0 ||
+      (!discardUnsaved && (cloudSaveError || cloudUnsavedTripIds.size))) {
+    throw new Error("Finish or resolve unsaved changes before refreshing.");
   }
 
   const epoch = cloudEpoch;
+  const writeGeneration = cloudWriteGeneration;
   const { data, error } = await supabaseClient
     .from("trips")
     .select("id, trip_data, updated_at")
@@ -212,26 +219,54 @@ async function refreshCloudTripsSafely(userId) {
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(`Could not refresh trips: ${error.message}`);
-
   if (epoch !== cloudEpoch || cloudUserId !== userId || !cloudReady) {
     throw new Error("Your account session changed during refresh.");
   }
-
-  if (cloudWritesPending > 0 || cloudSaveError) {
+  if (cloudWritesPending > 0 || writeGeneration !== cloudWriteGeneration ||
+      (!discardUnsaved && (cloudSaveError || cloudUnsavedTripIds.size))) {
     throw new Error("Trips changed while refreshing. Try again after saving.");
   }
 
+  // Nothing in local memory is replaced unless the server read succeeded.
   trips = (data || [])
     .filter((row) => row.trip_data && typeof row.trip_data === "object")
     .map((row) => ({ ...row.trip_data, id: row.id }));
   cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
-  cloudUnsavedTripIds.clear();
-  cloudTripSaveSequence.clear();
+
+  if (discardUnsaved) {
+    // The user reviewed the warning and explicitly discarded a *test* edit.
+    // Reset the old rejected queue only when all writes have finished.
+    cloudSaveError = null;
+    cloudUnsavedTripIds.clear();
+    cloudTripSaveSequence.clear();
+    cloudWriteQueue = Promise.resolve();
+  }
   selectedTripId = null;
   currentView = "all";
   render();
+  window.voyafundraUX?.setStatus("saved", "Trips refreshed from the cloud");
   return true;
 }
+
+/**
+ * A private, on-demand export of unsaved local snapshots. Does not write
+ * the snapshots to browser storage or send them to any external service.
+ */
+function getCloudRecoverySnapshot() {
+  const unsaved = Array.from(cloudUnsavedTripIds).map((id) => {
+    const trip = trips.find((item) => item.id === id);
+    return trip
+      ? { action: "save", trip: JSON.parse(JSON.stringify(trip)) }
+      : { action: "delete", trip_id: id };
+  });
+  return {
+    format: "voyafundra-unsaved-drafts-v1",
+    created_at: new Date().toISOString(),
+    error: cloudSaveError?.message || null,
+    unsaved,
+  };
+}
+
 
 /**
  * Clear all trip information from application memory.
@@ -283,6 +318,7 @@ function saveTrips(tripId, options = {}) {
   const userId = cloudUserId;
   const epoch = cloudEpoch;
   cloudWritesPending += 1;
+  cloudWriteGeneration += 1;
   cloudUnsavedTripIds.add(tripId);
   const saveSequence = (cloudTripSaveSequence.get(tripId) || 0) + 1;
   cloudTripSaveSequence.set(tripId, saveSequence);
