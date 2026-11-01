@@ -44,6 +44,7 @@
     <!-- User Authentication -->
     <script defer src="auth.js"></script>
     <script defer src="mobile.js"></script>
+    <script defer src="conflict-recovery.js"></script>
     <script defer src="experience.js"></script>
     <script defer src="pwa-updates.js"></script>
   </head>
@@ -246,6 +247,28 @@
           <div class="cloud-recovery-actions">
             <button class="btn btn-outline" type="button" id="downloadRecoveryBackupBtn">Download unsaved backup</button>
             <button class="btn btn-outline" type="button" id="closeCloudRecoveryBtn">Keep my edits</button>
+          </div>
+          <div class="cloud-conflict-review" id="cloudConflictReview">
+            <h3>Compare this device with the cloud</h3>
+            <p>Review one unsaved trip at a time. Nothing is overwritten just by comparing.</p>
+            <div class="cloud-conflict-select-row">
+              <label for="cloudConflictTripSelect">Unsaved trip</label>
+              <select id="cloudConflictTripSelect" aria-label="Unsaved trip to compare"></select>
+              <button class="btn btn-outline" type="button" id="compareCloudTripBtn">Compare versions</button>
+            </div>
+            <div id="cloudConflictComparison" hidden>
+              <p id="cloudConflictChangeNotice" class="cloud-conflict-notice"></p>
+              <div class="cloud-conflict-table" id="cloudConflictTable" aria-label="Comparison of local and cloud trip versions"></div>
+              <p class="cloud-conflict-disclaimer">Choosing a version replaces the <strong>entire trip</strong>, including travel options and savings. No fields are merged automatically. Download an unsaved backup first if needed.</p>
+              <label class="cloud-recovery-confirm">
+                <input type="checkbox" id="acknowledgeConflictChoice" />
+                I reviewed both versions and understand that the other version may be lost for this trip.
+              </label>
+              <div class="cloud-conflict-actions">
+                <button class="btn btn-outline" type="button" id="acceptCloudTripBtn">Use cloud version</button>
+                <button class="btn btn-outline" type="button" id="acceptLocalTripBtn">Save my version to cloud</button>
+              </div>
+            </div>
           </div>
           <label class="cloud-recovery-confirm">
             <input type="checkbox" id="acknowledgeRecoveryDiscard" />
