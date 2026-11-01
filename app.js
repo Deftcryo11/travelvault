@@ -32,6 +32,10 @@ let cloudWriteQueue = Promise.resolve();
 // Guard against refreshing or closing with pending/failed saves.
 let cloudWritesPending = 0;
 let cloudSaveError = null;
+// Last confirmed database version of each individual trip.
+let cloudTripVersions = new Map();
+// Failed changes remain visible until a successful retry of that trip.
+let cloudUnsavedTripIds = new Set();
 
 /* ==========================================
    GENERAL HELPERS
@@ -153,7 +157,7 @@ async function loadCloudTrips(user) {
 
   const { data, error } = await supabaseClient
     .from("trips")
-    .select("id, trip_data")
+    .select("id, trip_data, updated_at")
     .eq("user_id", user.id)
     .order("created_at", {
       ascending: false,
@@ -175,6 +179,8 @@ async function loadCloudTrips(user) {
       id: row.id,
     }));
 
+  cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
+  cloudUnsavedTripIds.clear();
   cloudReady = true;
   cloudSaveError = null;
   window.voyafundraUX?.setStatus("saved", "Trips up to date");
@@ -198,7 +204,7 @@ async function refreshCloudTripsSafely(userId) {
   const epoch = cloudEpoch;
   const { data, error } = await supabaseClient
     .from("trips")
-    .select("id, trip_data")
+    .select("id, trip_data, updated_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
@@ -215,6 +221,8 @@ async function refreshCloudTripsSafely(userId) {
   trips = (data || [])
     .filter((row) => row.trip_data && typeof row.trip_data === "object")
     .map((row) => ({ ...row.trip_data, id: row.id }));
+  cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
+  cloudUnsavedTripIds.clear();
   selectedTripId = null;
   currentView = "all";
   render();
@@ -233,6 +241,8 @@ function clearCloudTrips() {
   cloudUserId = null;
   cloudReady = false;
   cloudSaveError = null;
+  cloudTripVersions.clear();
+  cloudUnsavedTripIds.clear();
   window.voyafundraUX?.setStatus("loading", "Sign in to sync trips");
 
   trips = [];
@@ -243,122 +253,111 @@ function clearCloudTrips() {
 }
 
 /**
- * Save the complete current trip collection.
+ * Persist exactly one edited trip or explicit deletion. This must never
+ * infer deletions from the device's cached list of trip IDs.
  *
- * Saves are queued to prevent an older save from
- * finishing after a newer one.
+ * Existing records use an atomic updated_at compare-and-swap: another
+ * device's write changes the version and our stale write matches zero rows.
  *
- * Each trip is stored as an individual database row.
+ * A later migration can replace timestamps with a stronger integer revision,
+ * but these safeguards work against the existing production table schema.
  */
-function saveTrips() {
-  if (!cloudReady || !cloudUserId) {
+function saveTrips(tripId, options = {}) {
+  if (!cloudReady || !cloudUserId || !tripId) {
     notify("Sign in before saving changes.");
     return false;
   }
 
+  const deleting = options.deleteTrip === true;
+  const trip = trips.find((item) => item.id === tripId);
+  if (!deleting && !trip) {
+    notify("Cannot save a trip that is no longer available.");
+    return false;
+  }
+  const snapshot = deleting ? null : JSON.parse(JSON.stringify(trip));
   const userId = cloudUserId;
   const epoch = cloudEpoch;
-
-  // Capture an independent copy at save time.
-  const snapshot = JSON.parse(JSON.stringify(trips));
   cloudWritesPending += 1;
-  window.voyafundraUX?.setStatus("saving", "Saving trips...");
+  cloudUnsavedTripIds.add(tripId);
+  window.voyafundraUX?.setStatus("saving", "Saving trip changes...");
 
-  cloudWriteQueue = cloudWriteQueue
-    .catch(() => {
-      // A previous failed save must not block
-      // subsequent attempts.
-    })
-    .then(async () => {
-      if (epoch !== cloudEpoch || userId !== cloudUserId) {
-        return;
+  // Each operation runs after earlier operations, and reads the confirmed
+  // version only when its own turn begins.
+  const write = cloudWriteQueue.catch(() => {}).then(async () => {
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
+
+    const previous = cloudTripVersions.get(tripId);
+    let newVersion;
+
+    if (deleting) {
+      if (!previous) {
+        throw new Error("The trip was not found in the last cloud snapshot.");
       }
-
-      // Read existing database trip IDs.
-      const { data: existing, error: readError } = await supabaseClient
-        .from("trips")
-        .select("id")
-        .eq("user_id", userId);
-
-      if (readError) {
-        throw readError;
+      const { data, error } = await supabaseClient.from("trips")
+        .delete()
+        .eq("user_id", userId)
+        .eq("id", tripId)
+        .eq("updated_at", previous)
+        .select("id");
+      if (error) throw error;
+      if (!data || data.length !== 1) {
+        throw new Error("Deletion blocked: this trip changed on another device.");
       }
-
-      if (epoch !== cloudEpoch || userId !== cloudUserId) {
-        return;
+    } else if (previous) {
+      // A guaranteed later timestamp ensures consecutive writes from this
+      // device do not retain an identical comparison token.
+      const updatedAt = new Date(Math.max(
+        Date.now(), Date.parse(previous) + 1
+      )).toISOString();
+      const { data, error } = await supabaseClient.from("trips")
+        .update({ trip_data: snapshot, updated_at: updatedAt })
+        .eq("user_id", userId)
+        .eq("id", tripId)
+        .eq("updated_at", previous)
+        .select("updated_at");
+      if (error) throw error;
+      if (!data || data.length !== 1) {
+        throw new Error("Save blocked: this trip changed on another device.");
       }
-
-      // Create or update current trips.
-      if (snapshot.length > 0) {
-        const rows = snapshot.map((trip) => ({
-          id: trip.id,
-          user_id: userId,
-          trip_data: trip,
-          updated_at: new Date().toISOString(),
-        }));
-
-        const { error: writeError } = await supabaseClient
-          .from("trips")
-          .upsert(rows, {
-            onConflict: "user_id,id",
-          });
-
-        if (writeError) {
-          throw writeError;
-        }
+      newVersion = data[0].updated_at;
+    } else {
+      // INSERT rather than UPSERT: a concurrent new record cannot be
+      // silently overwritten if the same ID already exists.
+      const { data, error } = await supabaseClient.from("trips")
+        .insert({ id: tripId, user_id: userId, trip_data: snapshot })
+        .select("updated_at");
+      if (error) throw error;
+      if (!data || data.length !== 1) {
+        throw new Error("Could not confirm the new trip was created.");
       }
-
-      if (epoch !== cloudEpoch || userId !== cloudUserId) {
-        return;
-      }
-
-      // Remove trips deleted from the dashboard.
-      const currentIds = new Set(snapshot.map((trip) => trip.id));
-
-      const deletedIds = (existing || [])
-        .map((row) => row.id)
-        .filter((id) => !currentIds.has(id));
-
-      if (deletedIds.length > 0) {
-        const { error: deleteError } = await supabaseClient
-          .from("trips")
-          .delete()
-          .eq("user_id", userId)
-          .in("id", deletedIds);
-
-        if (deleteError) {
-          throw deleteError;
-        }
-      }
-
-      // Only report success for the current account.
-      if (epoch === cloudEpoch && userId === cloudUserId) {
-        cloudSaveError = null;
-        window.voyafundraUX?.setStatus("saved", "All changes saved");
-        console.log("Voyafundra: Trips synchronized with Supabase.");
-      }
-    });
-
-  // Report cloud failures instead of treating them
-  // as successful saves.
-  cloudWriteQueue.catch((error) => {
-    if (epoch === cloudEpoch && userId === cloudUserId) {
-      cloudSaveError = error;
-      console.error("Voyafundra cloud save failed:", error);
-      window.voyafundraUX?.setStatus("error", "Save failed — changes not confirmed");
-      notify(
-        "Cloud save failed. Keep this tab open and retry saving before refreshing.",
-      );
+      newVersion = data[0].updated_at;
     }
+
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
+    if (deleting) cloudTripVersions.delete(tripId);
+    else cloudTripVersions.set(tripId, newVersion);
+    cloudUnsavedTripIds.delete(tripId);
+    if (cloudUnsavedTripIds.size === 0) cloudSaveError = null;
+    console.log("Voyafundra: Trip change confirmed by Supabase.");
+  });
+
+  cloudWriteQueue = write;
+  // Report failures, retaining local data and the unsaved-trip marker.
+  void write.catch((error) => {
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
+    cloudSaveError = error;
+    console.error("Voyafundra cloud save failed:", error);
+    window.voyafundraUX?.setStatus("error", "Save not confirmed — keep app open");
+    notify((error.message || "Cloud save failed.") +
+      " Keep this app open and retry the trip edit.");
   }).finally(() => {
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
     cloudWritesPending = Math.max(0, cloudWritesPending - 1);
-    // A newer save can still be running; do not hide its pending state.
-    if (epoch === cloudEpoch && userId === cloudUserId &&
-        cloudWritesPending === 0 && !cloudSaveError) {
+    if (cloudWritesPending === 0 && !cloudSaveError &&
+        cloudUnsavedTripIds.size === 0) {
       window.voyafundraUX?.setStatus("saved", "All changes saved");
     }
   });
-
   return true;
 }
 
@@ -1566,7 +1565,7 @@ function tripForm(existing = null) {
       selectedTripId = updated.id;
     }
 
-    saveTrips();
+    saveTrips(updated.id);
     notify(existing ? "Trip updated." : "Trip created.");
 
     return true;
@@ -1766,7 +1765,7 @@ function travelOptionForm(existing = null) {
         trip.options.push(updated);
       }
 
-      saveTrips();
+      saveTrips(trip.id);
       notify("Travel option saved.");
 
       return true;
@@ -1839,7 +1838,7 @@ function savingsForm(existing = null) {
         trip.savings.push(updated);
       }
 
-      saveTrips();
+      saveTrips(trip.id);
       notify("Savings saved.");
 
       return true;
@@ -1864,7 +1863,7 @@ function changeTripStatus(trip) {
   showModal("Change trip status", body, (data) => {
     trip.status = data.status;
 
-    saveTrips();
+    saveTrips(trip.id);
 
     // Return to the appropriate trip list.
     selectedTripId = null;
@@ -1881,15 +1880,15 @@ function changeTripStatus(trip) {
    DELETE CONFIRMATION
 ========================================== */
 
-function confirmRemove(message, callback) {
+function confirmRemove(message, callback, tripId, options = {}) {
   if (!window.confirm(message)) return;
 
   callback();
 
-  saveTrips();
+  saveTrips(tripId, options);
   render();
 
-  notify("Deleted.");
+  notify("Deleted locally; synchronizing...");
 }
 
 /* ==========================================
@@ -2064,6 +2063,8 @@ $("#appContent").addEventListener("click", (event) => {
 
           selectedTripId = null;
         },
+        trip.id,
+        { deleteTrip: true },
       );
       break;
 
@@ -2082,7 +2083,7 @@ $("#appContent").addEventListener("click", (event) => {
 
       confirmRemove("Delete this travel option?", () => {
         trip.options = trip.options.filter((option) => option.id !== id);
-      });
+      }, trip.id);
       break;
 
     case "add-saving":
@@ -2100,7 +2101,7 @@ $("#appContent").addEventListener("click", (event) => {
 
       confirmRemove("Delete this monthly savings entry?", () => {
         trip.savings = trip.savings.filter((row) => row.id !== id);
-      });
+      }, trip.id);
       break;
   }
 });
