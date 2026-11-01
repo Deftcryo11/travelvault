@@ -228,6 +228,7 @@
             <span id="cloudStatusText">Checking cloud connection...</span>
           </div>
           <div class="cloud-toolbar-actions">
+            <button class="btn btn-outline" type="button" id="reviewCloudIssueBtn" hidden>Review unsaved</button>
             <button class="btn btn-outline cloud-refresh" id="refreshTripsBtn" type="button">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M20 11a8 8 0 1 0-2.2 5.6"/><path d="M20 4v7h-7"/>
@@ -235,6 +236,21 @@
               <span>Refresh</span>
             </button>
           </div>
+        </section>
+        <section class="cloud-recovery-panel" id="cloudRecoveryPanel" aria-labelledby="cloudRecoveryTitle" hidden>
+          <h2 id="cloudRecoveryTitle">Review unsaved trip changes</h2>
+          <p id="cloudRecoveryDetails"></p>
+          <p>Your changes are still in this device's current app session. Download a backup before choosing to discard any unsaved changes. Keep your backup private.</p>
+          <div class="cloud-recovery-actions">
+            <button class="btn btn-outline" type="button" id="downloadRecoveryBackupBtn">Download unsaved backup</button>
+            <button class="btn btn-outline" type="button" id="closeCloudRecoveryBtn">Keep my edits</button>
+          </div>
+          <label class="cloud-recovery-confirm">
+            <input type="checkbox" id="acknowledgeRecoveryDiscard" />
+            I have saved a backup, or these edits are disposable test data.
+          </label>
+          <button class="btn btn-outline" type="button" id="discardRecoveryBtn">Discard local changes and reload cloud</button>
+          <p id="cloudRecoveryMessage" role="status" aria-live="polite"></p>
         </section>
         <div class="connection-banner" id="connectionBanner" role="status" hidden>
           You're offline. Cloud changes can't be saved or refreshed until you reconnect.
