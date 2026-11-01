@@ -72,3 +72,41 @@ At this stage the live database is unchanged. A rollback would revert only
 application code, but a future schema migration must have its own reviewed
 rollback procedure and data preservation plan. Never drop trip records as part
 of rollback.
+
+## Beta testing policy (November 2026)
+
+- All new Voyafundra UI, security, reliability, and regression-test changes
+  are committed to `beta-testing` and tracked in draft PR #5.
+- Production `main` is frozen until the user explicitly approves a release.
+- The old `feature/data-protection-foundation` work is preserved in the
+  `beta-testing` commit history. PR #4 was closed without merging.
+- The beta Vercel preview currently uses the existing Supabase project.
+  Use disposable trips in a dedicated test account.
+- The preview now includes manual side-by-side comparison of a conflicting
+  trip's local and cloud values. Users must explicitly confirm whether to
+  accept the cloud copy or overwrite a newer cloud copy with the local one.
+- Saving a local version uses an `updated_at` compare-and-swap; if another
+  device changed that row since the review, the overwrite is rejected.
+- Only the selected trip is resolved. Unconfirmed changes in other trips
+  are preserved, and no automatic field-level merge occurs.
+- Conflict handling and recovery are still **beta**. A server-managed
+  revision column, durable offline recovery, and comprehensive device tests
+  remain release requirements.
+
+### Beta conflict test matrix
+
+1. Open the same test trip on PC and iPhone, edit and save the PC version,
+   then save the older phone copy: save must be blocked.
+2. Review unsaved changes on phone, choose the trip, and compare local/cloud.
+   The comparison must not modify the database.
+3. Accept the cloud copy: only that trip's local conflict resolves.
+4. Repeat the conflict and explicitly select local version, after reviewing
+   its impact on options and savings. Confirm the result on PC.
+5. Change the cloud copy again *after* opening the comparison, before choosing
+   local: the stale overwrite must be rejected.
+6. Delete the cloud trip on one device and review an older local draft:
+   the app must not silently recreate the deleted trip.
+7. Keep an unrelated unsaved trip in the same account: resolving one trip
+   must not discard the other draft.
+8. Check the above behavior on both iPhone Home Screen mode and desktop.
+
