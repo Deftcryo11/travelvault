@@ -1329,7 +1329,13 @@ function showModal(title, body, onSubmit) {
 
   $("#modalLayer").classList.remove("hidden");
 
+  // Both the × button and Cancel must close every type of trip form.
   $("#cancelModal").onclick = closeModal;
+  $("#modalClose").onclick = closeModal;
+
+  // Replace only date/month inputs with Voyafundra-themed calendars.
+  // Their original names/ISO values remain available to FormData.
+  window.voyafundraCalendar?.mount($("#activeForm"));
 
   $("#activeForm").onsubmit = (event) => {
     event.preventDefault();
@@ -1348,6 +1354,7 @@ function showModal(title, body, onSubmit) {
 }
 
 function closeModal() {
+  window.voyafundraCalendar?.closeAll();
   $("#modalLayer").classList.add("hidden");
   $("#modalBody").innerHTML = "";
 }
