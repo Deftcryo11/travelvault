@@ -76,6 +76,7 @@ function setup({ rows = [], trips = [] } = {}) {
     let cloudSaveError = null;
     let cloudUnsavedTripIds = new Set();
     let cloudTripSaveSequence = new Map();
+    let cloudWriteGeneration = 0;
   `;
   vm.runInContext(setupCode + source.slice(start, end), context);
   return { db, alerts, context,
