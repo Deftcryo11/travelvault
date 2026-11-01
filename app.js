@@ -36,6 +36,8 @@ let cloudSaveError = null;
 let cloudTripVersions = new Map();
 // Failed changes remain visible until a successful retry of that trip.
 let cloudUnsavedTripIds = new Set();
+// Distinguishes successive saves for the same trip while writes are queued.
+let cloudTripSaveSequence = new Map();
 
 /* ==========================================
    GENERAL HELPERS
@@ -181,6 +183,7 @@ async function loadCloudTrips(user) {
 
   cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
   cloudUnsavedTripIds.clear();
+  cloudTripSaveSequence.clear();
   cloudReady = true;
   cloudSaveError = null;
   window.voyafundraUX?.setStatus("saved", "Trips up to date");
@@ -223,6 +226,7 @@ async function refreshCloudTripsSafely(userId) {
     .map((row) => ({ ...row.trip_data, id: row.id }));
   cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
   cloudUnsavedTripIds.clear();
+  cloudTripSaveSequence.clear();
   selectedTripId = null;
   currentView = "all";
   render();
@@ -243,6 +247,7 @@ function clearCloudTrips() {
   cloudSaveError = null;
   cloudTripVersions.clear();
   cloudUnsavedTripIds.clear();
+  cloudTripSaveSequence.clear();
   window.voyafundraUX?.setStatus("loading", "Sign in to sync trips");
 
   trips = [];
@@ -279,6 +284,8 @@ function saveTrips(tripId, options = {}) {
   const epoch = cloudEpoch;
   cloudWritesPending += 1;
   cloudUnsavedTripIds.add(tripId);
+  const saveSequence = (cloudTripSaveSequence.get(tripId) || 0) + 1;
+  cloudTripSaveSequence.set(tripId, saveSequence);
   window.voyafundraUX?.setStatus("saving", "Saving trip changes...");
 
   // Each operation runs after earlier operations, and reads the confirmed
@@ -336,7 +343,12 @@ function saveTrips(tripId, options = {}) {
     if (epoch !== cloudEpoch || userId !== cloudUserId) return false;
     if (deleting) cloudTripVersions.delete(tripId);
     else cloudTripVersions.set(tripId, newVersion);
-    cloudUnsavedTripIds.delete(tripId);
+    // Earlier queued writes cannot clear the unsaved marker for a newer
+    // snapshot of the same trip that has not yet been confirmed.
+    if (cloudTripSaveSequence.get(tripId) === saveSequence) {
+      cloudUnsavedTripIds.delete(tripId);
+      cloudTripSaveSequence.delete(tripId);
+    }
     if (cloudUnsavedTripIds.size === 0) cloudSaveError = null;
     console.log("Voyafundra: Trip change confirmed by Supabase.");
     return true;
