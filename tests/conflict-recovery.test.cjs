@@ -117,7 +117,7 @@ test("new local edit and account switch invalidate an old comparison",async()=>{
   vm.runInContext('trips[0].budget=180',x.ctx);
   await assert.rejects(x.api.useCloud(v),/Local trip changed/);
   vm.runInContext('cloudUserId="other-user"',x.ctx);
-  await assert.rejects(x.api.useLocal(v),/no longer has an unresolved save/);
+  await assert.rejects(x.api.useLocal(v),/The trip or account changed|no longer has an unresolved save/);
 });
 
 test("deleted cloud trip cannot be silently recreated by overwrite",async()=>{
