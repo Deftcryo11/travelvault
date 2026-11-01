@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="mobile.css" />
     <link rel="stylesheet" href="experience.css" />
+    <link rel="stylesheet" href="trip-calendar.css" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -37,6 +38,7 @@
     <script defer src="supabase-conf.js"></script>
 
     <!-- Voyafundra Application -->
+    <script defer src="trip-calendar.js"></script>
     <script defer src="app.js"></script>
 
     <!-- User Authentication -->
@@ -273,7 +275,7 @@
       >
         <div class="modal-header">
           <h2 id="modalHeading"></h2>
-          <button class="close-btn" id="modalClose" aria-label="Close">
+          <button type="button" class="close-btn" id="modalClose" aria-label="Close form">
             ×
           </button>
         </div>
