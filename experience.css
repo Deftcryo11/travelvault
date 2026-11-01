@@ -93,3 +93,40 @@
 @media (max-width: 700px) {
   .version-update-notice { left: 12px; right: 12px; width: auto; }
 }
+
+
+/* Recoverable cloud sync errors: never auto-discard local changes. */
+#reviewCloudIssueBtn[hidden], #cloudRecoveryPanel[hidden] { display: none !important; }
+#reviewCloudIssueBtn { min-height: 39px; font-size: 12px; font-weight: 700; }
+.cloud-recovery-panel {
+  margin: -4px 0 16px;
+  padding: 17px 18px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-left: 4px solid var(--negative);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.cloud-recovery-panel h2 { font-size: 17px; margin: 0 0 8px; }
+.cloud-recovery-panel p { overflow-wrap: anywhere; font-size: 13px; }
+.cloud-recovery-actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 12px 0; }
+.cloud-recovery-actions .btn, #discardRecoveryBtn { min-height: 42px; }
+.cloud-recovery-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 15px 0 12px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cloud-recovery-confirm input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; }
+#discardRecoveryBtn { border-color: var(--negative); color: var(--text); }
+#cloudRecoveryMessage { font-weight: 650; }
+@media (max-width: 700px) {
+  .cloud-recovery-panel { padding: 15px 13px; }
+  .cloud-recovery-actions { flex-direction: column; }
+  .cloud-recovery-actions .btn, #discardRecoveryBtn { width: 100%; min-height: 44px; }
+  #reviewCloudIssueBtn { min-height: 44px; }
+}
