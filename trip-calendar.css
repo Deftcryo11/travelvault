@@ -1,0 +1,118 @@
+/* Voyafundra's native-looking, fully theme-aware trip date / month calendar.
+   Uses existing light/dark variables instead of introducing a new palette. */
+.vf-calendar { width: 100%; min-width: 0; }
+.vf-calendar-trigger {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+.vf-calendar-trigger > svg { width: 19px; height: 19px; flex: none; }
+.vf-calendar-trigger > svg:first-child { color: var(--primary); }
+.vf-calendar-trigger > svg:last-child { color: var(--text-secondary); width: 15px; height: 15px; }
+.vf-calendar-trigger .vf-calendar-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.vf-calendar-trigger[aria-expanded="true"] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--border-strong);
+}
+.vf-calendar-panel {
+  width: 100%;
+  min-width: 0;
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.vf-calendar-panel[hidden] { display: none !important; }
+.vf-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  background: var(--surface-alt);
+  border-radius: 9px;
+  padding: 5px 6px;
+  font-size: 13px;
+}
+.vf-calendar-header strong { text-align: center; min-width: 0; }
+.vf-calendar-arrow {
+  width: 36px; height: 36px; flex: none;
+  border: 0; border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  font-size: 28px; line-height: 1;
+}
+.vf-calendar-arrow:hover, .vf-calendar-arrow:focus-visible { background: var(--surface-hover); }
+.vf-calendar-weekdays, .vf-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+.vf-calendar-weekdays { margin-top: 9px; text-align: center; }
+.vf-calendar-weekdays span {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 750;
+  padding: 5px 0;
+}
+.vf-calendar-days { margin-top: 5px; }
+.vf-calendar-day, .vf-calendar-month {
+  display: grid;
+  place-items: center;
+  min-width: 0; width: 100%;
+  min-height: 36px;
+  padding: 3px 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  touch-action: manipulation;
+}
+.vf-calendar-day:hover, .vf-calendar-month:hover { background: var(--surface-hover); }
+.vf-calendar-day.is-today:not(.is-selected),
+.vf-calendar-month.is-today:not(.is-selected) { border-color: var(--primary); }
+.vf-calendar-day.is-selected, .vf-calendar-month.is-selected {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.vf-calendar-months {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 12px;
+}
+.vf-calendar-month { min-height: 42px; }
+.vf-calendar-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.vf-calendar-footer button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.vf-calendar-footer button:hover { background: var(--surface-hover); }
+@media (max-width: 700px) {
+  .vf-calendar-trigger { min-height: 46px; font-size: 16px; }
+  .vf-calendar-panel { padding: 10px; }
+  .vf-calendar-day { min-height: 42px; font-size: 13px; }
+  .vf-calendar-month { min-height: 44px; font-size: 14px; }
+  .modal .close-btn { flex: 0 0 auto; min-width: 44px; min-height: 44px; }
+}

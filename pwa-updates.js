@@ -18,6 +18,7 @@
   const FILES = [
     "index.html", "app.js", "auth.js", "styles.css",
     "mobile.css", "mobile.js", "experience.css", "experience.js",
+    "trip-calendar.js", "trip-calendar.css", "conflict-recovery.js",
     "pwa-updates.js", "manifest.webmanifest"
   ];
   const CHECK_INTERVAL_MS = 120000;
@@ -74,6 +75,10 @@
       }
       if (typeof cloudWritesPending !== "undefined" && cloudWritesPending > 0) {
         return "Trip changes are still saving. Try again when all changes are saved.";
+      }
+      if (typeof cloudUnsavedTripIds !== "undefined" &&
+          cloudUnsavedTripIds.size > 0) {
+        return "Unconfirmed trip edits must be resolved before updating.";
       }
     }
     const modal = document.getElementById("modalLayer");
