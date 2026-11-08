@@ -33,7 +33,7 @@
   async function readCloudRow(id, userId) {
     const { data, error } = await supabaseClient
       .from("trips")
-      .select("id, trip_data, updated_at")
+      .select("id, trip_data, updated_at, revision")
       .eq("user_id", userId)
       .eq("id", id)
       .maybeSingle();
@@ -53,6 +53,7 @@
       remote: row?.trip_data && typeof row.trip_data === "object"
         ? clone({ ...row.trip_data, id: row.id }) : null,
       updatedAt: row?.updated_at ?? null,
+      revision: row?.revision ?? null,
       // A second tab may save a newer draft while the comparison is open.
       // Never erase that other tab's journal entry after resolving this one.
       draftToken: window.voyafundraDrafts
@@ -90,7 +91,7 @@
     assertReviewFresh(reviewed, reviewed.generation);
     const row = await readCloudRow(reviewed.id, reviewed.userId);
     assertReviewFresh(reviewed, reviewed.generation);
-    if ((row?.updated_at ?? null) !== reviewed.updatedAt) {
+    if ((row?.revision ?? null) !== reviewed.revision) {
       throw new Error("Cloud version changed again. Compare both versions again.");
     }
 
@@ -100,10 +101,12 @@
       if (idx >= 0) trips[idx] = remote;
       else trips.unshift(remote);
       cloudTripVersions.set(reviewed.id, row.updated_at);
+      cloudTripRevisions.set(reviewed.id, row.revision);
     } else {
       // A deletion on the other device is also an explicit choice to accept.
       if (idx >= 0) trips.splice(idx, 1);
       cloudTripVersions.delete(reviewed.id);
+      cloudTripRevisions.delete(reviewed.id);
       if (selectedTripId === reviewed.id) selectedTripId = null;
     }
     finishResolution(reviewed.id, "Cloud version accepted for this trip",
@@ -120,7 +123,8 @@
       !reviewed.updatedAt && cloudRestoredDrafts.has(reviewed.id) &&
       cloudRestoredDrafts.get(reviewed.id).baseVersion == null;
     if (!reviewed.local ||
-        (!restoringNewTrip && (!reviewed.remote || !reviewed.updatedAt))) {
+        (!restoringNewTrip && (!reviewed.remote ||
+          !Number.isSafeInteger(reviewed.revision)))) {
       throw new Error("A cloud trip was deleted or is missing; export your draft instead.");
     }
 
@@ -141,18 +145,15 @@
         // INSERT rejects duplicate IDs rather than overwriting them.
         ({ data, error } = await supabaseClient.from("trips")
           .insert({ id: reviewed.id, user_id: userId, trip_data: snapshot })
-          .select("updated_at"));
+          .select("updated_at, revision"));
       } else {
-        const updatedAt = new Date(Math.max(
-          Date.now(), Date.parse(reviewed.updatedAt) + 1
-        )).toISOString();
-        // Atomic conditional write: a newer cloud edit matches zero rows.
+        // Database increments the revision and timestamp.
         ({ data, error } = await supabaseClient.from("trips")
-          .update({ trip_data: snapshot, updated_at: updatedAt })
+          .update({ trip_data: snapshot })
           .eq("user_id", userId)
           .eq("id", reviewed.id)
-          .eq("updated_at", reviewed.updatedAt)
-          .select("updated_at"));
+          .eq("revision", reviewed.revision)
+          .select("updated_at, revision"));
       }
       if (error) throw error;
       if (!data || data.length !== 1) {
@@ -160,6 +161,7 @@
       }
       if (cloudEpoch !== epoch || cloudUserId !== userId) return false;
       cloudTripVersions.set(reviewed.id, data[0].updated_at);
+      cloudTripRevisions.set(reviewed.id, data[0].revision);
       // If another edit was queued in the meantime, it still needs saving.
       if (cloudTripSaveSequence.get(reviewed.id) === sequence) {
         finishResolution(reviewed.id, "Your chosen trip version saved",
