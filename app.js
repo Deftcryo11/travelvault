@@ -355,11 +355,18 @@ function discardSavedDrafts() {
 }
 
 /** No trip mutation can replace an unreviewed, older local recovery copy. */
-function canStartTripEdit() {
-  if (!cloudRecoveryPendingDrafts.length && !cloudRecoveryReadError) return true;
-  notify("Please review recovered trip drafts before editing.");
-  window.voyafundraUX?.showDrafts?.();
-  return false;
+function canStartTripEdit(tripId = null) {
+  if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
+    notify("Please review saved recovery drafts before editing.");
+    window.voyafundraUX?.showDrafts?.();
+    return false;
+  }
+  if (tripId && cloudRestoredDrafts.has(tripId)) {
+    notify("Compare and resolve this recovered trip before editing it.");
+    window.voyafundraUX?.showRecovery?.();
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -2234,7 +2241,7 @@ $("#appContent").addEventListener("click", (event) => {
 
   if (["new", "edit-trip", "change-status", "delete-trip", "add-option",
        "edit-option", "delete-option", "add-saving", "edit-saving",
-       "delete-saving"].includes(action) && !canStartTripEdit()) return;
+       "delete-saving"].includes(action) && !canStartTripEdit(trip?.id || null)) return;
 
   switch (action) {
     case "new":
