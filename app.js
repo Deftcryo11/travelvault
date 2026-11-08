@@ -34,6 +34,8 @@ let cloudWritesPending = 0;
 let cloudSaveError = null;
 // Last confirmed database version of each individual trip.
 let cloudTripVersions = new Map();
+// Server-generated integer revision provides an authoritative compare-and-swap.
+let cloudTripRevisions = new Map();
 // Failed changes remain visible until a successful retry of that trip.
 let cloudUnsavedTripIds = new Set();
 // Distinguishes successive saves for the same trip while writes are queued.
@@ -166,7 +168,7 @@ async function loadCloudTrips(user) {
 
   const { data, error } = await supabaseClient
     .from("trips")
-    .select("id, trip_data, updated_at")
+    .select("id, trip_data, updated_at, revision")
     .eq("user_id", user.id)
     .order("created_at", {
       ascending: false,
@@ -189,6 +191,7 @@ async function loadCloudTrips(user) {
     }));
 
   cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
+  cloudTripRevisions = new Map((data || []).map((row) => [row.id, row.revision]));
   cloudUnsavedTripIds.clear();
   cloudTripSaveSequence.clear();
   cloudRestoredDrafts.clear();
@@ -236,7 +239,7 @@ async function refreshCloudTripsSafely(userId, options = {}) {
   const writeGeneration = cloudWriteGeneration;
   const { data, error } = await supabaseClient
     .from("trips")
-    .select("id, trip_data, updated_at")
+    .select("id, trip_data, updated_at, revision")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
@@ -260,6 +263,7 @@ async function refreshCloudTripsSafely(userId, options = {}) {
     .filter((row) => row.trip_data && typeof row.trip_data === "object")
     .map((row) => ({ ...row.trip_data, id: row.id }));
   cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
+  cloudTripRevisions = new Map((data || []).map((row) => [row.id, row.revision]));
 
   if (discardUnsaved) {
     // The user reviewed the warning and explicitly discarded a *test* edit.
@@ -382,6 +386,7 @@ function clearCloudTrips() {
   cloudReady = false;
   cloudSaveError = null;
   cloudTripVersions.clear();
+  cloudTripRevisions.clear();
   cloudUnsavedTripIds.clear();
   cloudTripSaveSequence.clear();
   cloudRestoredDrafts.clear();
@@ -459,17 +464,19 @@ function saveTrips(tripId, options = {}) {
     if (epoch !== cloudEpoch || userId !== cloudUserId) return;
 
     const previous = cloudTripVersions.get(tripId);
+    const previousRevision = cloudTripRevisions.get(tripId);
     let newVersion;
+    let newRevision;
 
     if (deleting) {
-      if (!previous) {
-        throw new Error("The trip was not found in the last cloud snapshot.");
+      if (!previous || !Number.isSafeInteger(previousRevision)) {
+        throw new Error("Trip revision is missing. Refresh before deleting.");
       }
       const { data, error } = await supabaseClient.from("trips")
         .delete()
         .eq("user_id", userId)
         .eq("id", tripId)
-        .eq("updated_at", previous)
+        .eq("revision", previousRevision)
         .select("id");
       if (error) throw error;
       if (!data || data.length !== 1) {
@@ -478,36 +485,43 @@ function saveTrips(tripId, options = {}) {
     } else if (previous) {
       // A guaranteed later timestamp ensures consecutive writes from this
       // device do not retain an identical comparison token.
-      const updatedAt = new Date(Math.max(
-        Date.now(), Date.parse(previous) + 1
-      )).toISOString();
+      if (!Number.isSafeInteger(previousRevision)) {
+        throw new Error("Trip revision is missing. Refresh before saving.");
+      }
       const { data, error } = await supabaseClient.from("trips")
-        .update({ trip_data: snapshot, updated_at: updatedAt })
+        .update({ trip_data: snapshot })
         .eq("user_id", userId)
         .eq("id", tripId)
-        .eq("updated_at", previous)
-        .select("updated_at");
+        .eq("revision", previousRevision)
+        .select("updated_at, revision");
       if (error) throw error;
       if (!data || data.length !== 1) {
         throw new Error("Save blocked: this trip changed on another device.");
       }
       newVersion = data[0].updated_at;
+      newRevision = data[0].revision;
     } else {
       // INSERT rather than UPSERT: a concurrent new record cannot be
       // silently overwritten if the same ID already exists.
       const { data, error } = await supabaseClient.from("trips")
         .insert({ id: tripId, user_id: userId, trip_data: snapshot })
-        .select("updated_at");
+        .select("updated_at, revision");
       if (error) throw error;
       if (!data || data.length !== 1) {
         throw new Error("Could not confirm the new trip was created.");
       }
       newVersion = data[0].updated_at;
+      newRevision = data[0].revision;
     }
 
     if (epoch !== cloudEpoch || userId !== cloudUserId) return false;
-    if (deleting) cloudTripVersions.delete(tripId);
-    else cloudTripVersions.set(tripId, newVersion);
+    if (deleting) {
+      cloudTripVersions.delete(tripId);
+      cloudTripRevisions.delete(tripId);
+    } else {
+      cloudTripVersions.set(tripId, newVersion);
+      cloudTripRevisions.set(tripId, newRevision);
+    }
     // Earlier queued writes cannot clear the unsaved marker for a newer
     // snapshot of the same trip that has not yet been confirmed.
     if (cloudTripSaveSequence.get(tripId) === saveSequence) {
