@@ -97,8 +97,9 @@ test("checklist starter, toggle, edit, delete actions use the per-trip save path
   const t={...trip,checklist:[]};
   const events=[];
   let submit;
+  let counter=0;
   const app={
-    generateId(){return "g-"+(events.length+1);},
+    generateId(){return "g-"+(++counter);},
     saveTrips(id){events.push("save:"+id);return Promise.resolve(true);},
     notify(msg){events.push("notice:"+msg);},
     render(){events.push("render");},
