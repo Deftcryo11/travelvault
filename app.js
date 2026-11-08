@@ -341,6 +341,11 @@ function saveTrips(tripId, options = {}) {
     notify("Sign in before saving changes.");
     return false;
   }
+  if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
+    notify("Review saved recovery drafts before changing trips.");
+    window.voyafundraUX?.showDrafts?.();
+    return false;
+  }
 
   const deleting = options.deleteTrip === true;
   const trip = trips.find((item) => item.id === tripId);
@@ -351,6 +356,25 @@ function saveTrips(tripId, options = {}) {
   const snapshot = deleting ? null : JSON.parse(JSON.stringify(trip));
   const userId = cloudUserId;
   const epoch = cloudEpoch;
+  // Journal a snapshot synchronously before starting the network request.
+  // If browser storage fails, keep the unsaved warning and prevent unsafe
+  // automatic logout, rather than claiming we have a recoverable draft.
+  let draftToken = null;
+  if (!deleting && window.voyafundraDrafts) {
+    try {
+      draftToken = window.voyafundraDrafts.record(
+        userId, tripId, "save", snapshot, cloudTripVersions.get(tripId) ?? null
+      );
+      cloudRecoveryStorageFaults.delete(tripId);
+    } catch (draftError) {
+      cloudRecoveryStorageFaults.add(tripId);
+      notify("Local recovery failed: " + draftError.message +
+        " Keep this app open until the cloud save is confirmed.");
+    }
+  } else if (!deleting) {
+    cloudRecoveryStorageFaults.add(tripId);
+    notify("Local recovery is unavailable. Keep this app open until saved.");
+  }
   cloudWritesPending += 1;
   cloudWriteGeneration += 1;
   cloudUnsavedTripIds.add(tripId);
@@ -416,8 +440,18 @@ function saveTrips(tripId, options = {}) {
     // Earlier queued writes cannot clear the unsaved marker for a newer
     // snapshot of the same trip that has not yet been confirmed.
     if (cloudTripSaveSequence.get(tripId) === saveSequence) {
+      // Older queued saves must not erase newer recovery snapshots.
+      if (draftToken && window.voyafundraDrafts) {
+        try {
+          window.voyafundraDrafts.forget(userId, tripId, draftToken);
+        } catch (journalError) {
+          console.warn("Could not clear a confirmed draft:", journalError);
+        }
+      }
       cloudUnsavedTripIds.delete(tripId);
       cloudTripSaveSequence.delete(tripId);
+      cloudRestoredDrafts.delete(tripId);
+      cloudRecoveryStorageFaults.delete(tripId);
     }
     if (cloudUnsavedTripIds.size === 0) cloudSaveError = null;
     console.log("Voyafundra: Trip change confirmed by Supabase.");
