@@ -20,7 +20,11 @@
   };
   const dateISO = (date = new Date()) => {
     if (!(date instanceof Date) || !Number.isFinite(date.getTime())) return null;
-    return date.toISOString().slice(0, 10);
+    // A UTC ISO slice can show *yesterday* for travellers east of UTC,
+    // including the Maldives. Countdown refers to the user's LOCAL day.
+    const pad = (n) => String(n).padStart(2, "0");
+    return date.getFullYear() + "-" + pad(date.getMonth() + 1) +
+      "-" + pad(date.getDate());
   };
   const monthStamp = (date) => date.getUTCFullYear() * 12 + date.getUTCMonth();
 
