@@ -39,6 +39,7 @@ function createSession(options = {}) {
   vm.runInContext(`
     let trips = [{ id: "trip-a", name: "Unsaved local edit" }];
     let cloudTripVersions = new Map([["trip-a", "2026-10-31T20:00:00Z"]]);
+    let cloudTripRevisions = new Map([["trip-a", 1]]);
     let cloudUnsavedTripIds = new Set(["trip-a"]);
     let cloudTripSaveSequence = new Map([["trip-a", 2]]);
     let cloudWriteQueue = Promise.reject(new Error("Previous conflict"));
