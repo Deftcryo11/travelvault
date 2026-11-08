@@ -40,6 +40,11 @@ let cloudUnsavedTripIds = new Set();
 let cloudTripSaveSequence = new Map();
 // Invalidates an in-flight refresh if a new local write is queued.
 let cloudWriteGeneration = 0;
+// Saved drafts are staged until the signed-in user explicitly reviews them.
+let cloudRecoveryPendingDrafts = [];
+let cloudRestoredDrafts = new Map();
+let cloudRecoveryStorageFaults = new Set();
+let cloudRecoveryReadError = null;
 
 /* ==========================================
    GENERAL HELPERS
@@ -186,9 +191,25 @@ async function loadCloudTrips(user) {
   cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
   cloudUnsavedTripIds.clear();
   cloudTripSaveSequence.clear();
+  cloudRestoredDrafts.clear();
+  cloudRecoveryStorageFaults.clear();
+  cloudRecoveryPendingDrafts = [];
+  cloudRecoveryReadError = null;
+  try {
+    cloudRecoveryPendingDrafts = window.voyafundraDrafts?.list(user.id) || [];
+  } catch (draftError) {
+    cloudRecoveryReadError = draftError;
+  }
   cloudReady = true;
-  cloudSaveError = null;
-  window.voyafundraUX?.setStatus("saved", "Trips up to date");
+  cloudSaveError = cloudRecoveryReadError;
+  window.voyafundraUX?.setStatus(
+    cloudRecoveryReadError || cloudRecoveryPendingDrafts.length ? "error" : "saved",
+    cloudRecoveryReadError
+      ? "Recovery storage could not be read — do not clear site data"
+      : cloudRecoveryPendingDrafts.length
+        ? "Saved drafts found — review before editing"
+        : "Trips up to date"
+  );
 
   render();
 
@@ -205,7 +226,8 @@ async function refreshCloudTripsSafely(userId, options = {}) {
   // requires explicit confirmation to opt into discarding local changes.
   const discardUnsaved = options.discardUnsaved === true;
   if (!cloudReady || !cloudUserId || cloudUserId !== userId ||
-      cloudWritesPending > 0 ||
+      cloudWritesPending > 0 || cloudRecoveryPendingDrafts.length ||
+      cloudRecoveryReadError ||
       (!discardUnsaved && (cloudSaveError || cloudUnsavedTripIds.size))) {
     throw new Error("Finish or resolve unsaved changes before refreshing.");
   }
@@ -227,6 +249,12 @@ async function refreshCloudTripsSafely(userId, options = {}) {
     throw new Error("Trips changed while refreshing. Try again after saving.");
   }
 
+  // If storage cleanup fails, keep the current local recovery copy intact.
+  if (discardUnsaved && window.voyafundraDrafts) {
+    for (const id of cloudUnsavedTripIds) {
+      window.voyafundraDrafts.forget(userId, id);
+    }
+  }
   // Nothing in local memory is replaced unless the server read succeeded.
   trips = (data || [])
     .filter((row) => row.trip_data && typeof row.trip_data === "object")
@@ -239,6 +267,8 @@ async function refreshCloudTripsSafely(userId, options = {}) {
     cloudSaveError = null;
     cloudUnsavedTripIds.clear();
     cloudTripSaveSequence.clear();
+    cloudRestoredDrafts.clear();
+    cloudRecoveryStorageFaults.clear();
     cloudWriteQueue = Promise.resolve();
   }
   selectedTripId = null;
@@ -283,6 +313,10 @@ function clearCloudTrips() {
   cloudTripVersions.clear();
   cloudUnsavedTripIds.clear();
   cloudTripSaveSequence.clear();
+  cloudRestoredDrafts.clear();
+  cloudRecoveryPendingDrafts = [];
+  cloudRecoveryStorageFaults.clear();
+  cloudRecoveryReadError = null;
   window.voyafundraUX?.setStatus("loading", "Sign in to sync trips");
 
   trips = [];
