@@ -19,6 +19,7 @@
     "index.html", "app.js", "auth.js", "styles.css",
     "mobile.css", "mobile.js", "experience.css", "experience.js",
     "trip-calendar.js", "trip-calendar.css", "conflict-recovery.js",
+    "recovery-drafts.js",
     "pwa-updates.js", "manifest.webmanifest"
   ];
   const CHECK_INTERVAL_MS = 120000;
@@ -79,6 +80,14 @@
       if (typeof cloudUnsavedTripIds !== "undefined" &&
           cloudUnsavedTripIds.size > 0) {
         return "Unconfirmed trip edits must be resolved before updating.";
+      }
+      if (typeof cloudRecoveryPendingDrafts !== "undefined" &&
+          cloudRecoveryPendingDrafts.length > 0) {
+        return "Review saved recovery drafts before updating.";
+      }
+      if (typeof cloudRecoveryReadError !== "undefined" &&
+          cloudRecoveryReadError) {
+        return "Recovery storage must be checked before updating.";
       }
     }
     const modal = document.getElementById("modalLayer");
