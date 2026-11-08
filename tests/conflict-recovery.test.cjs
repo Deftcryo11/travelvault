@@ -23,7 +23,18 @@ function setup({ remote = [row("a", "PC copy")],
       const query = {
         eq(k,v) { filter[k]=v; return query; },
         update(body) { action="update"; payload=body; return query; },
+        insert(body) { action="insert"; payload=body; return query; },
         select() {
+          if (action === "insert") {
+            calls.push({ action, id:payload.id });
+            if (records.has(payload.id)) {
+              return Promise.resolve({ data:null, error:Error("duplicate trip") });
+            }
+            const inserted={ ...JSON.parse(JSON.stringify(payload)),
+              updated_at:"2026-11-08T00:00:00.000Z" };
+            records.set(payload.id,inserted);
+            return Promise.resolve({ data:[{updated_at:inserted.updated_at}],error:null });
+          }
           if (action !== "update") return query;
           calls.push({ action, ...filter });
           const stored = records.get(filter.id);
@@ -126,6 +137,40 @@ test("deleted cloud trip cannot be silently recreated by overwrite",async()=>{
   assert.equal(v.remote,null);
   await assert.rejects(x.api.useLocal(v),/deleted or is missing/);
   assert.equal(x.records.size,0);
+});
+
+
+test("explicit restoration may insert a truly new trip without an upsert",async()=>{
+  const x=setup({remote:[]});
+  vm.runInContext('cloudRestoredDrafts.set("a",{baseVersion:null});cloudTripVersions.delete("a");',x.ctx);
+  const review=await x.api.review("a");
+  assert.equal(review.remote,null);
+  assert.equal(await x.api.useLocal(review),true);
+  assert.equal(x.records.get("a").trip_data.name,"Phone edit");
+  assert.equal(x.calls.filter(c=>c.action==="insert").length,1);
+  assert.equal(vm.runInContext('cloudUnsavedTripIds.size',x.ctx),0);
+});
+
+test("an interrupted new trip cannot overwrite a concurrent insert",async()=>{
+  const x=setup({remote:[]});
+  vm.runInContext('cloudRestoredDrafts.set("a",{baseVersion:null});cloudTripVersions.delete("a");',x.ctx);
+  const review=await x.api.review("a");
+  x.records.set("a",row("a","Other device created trip"));
+  await assert.rejects(x.api.useLocal(review),/duplicate trip/);
+  assert.equal(x.records.get("a").trip_data.name,"Other device created trip");
+  assert.equal(vm.runInContext('cloudUnsavedTripIds.has("a")',x.ctx),true);
+});
+
+test("accepting cloud version passes its original journal token for safe cleanup",async()=>{
+  const x=setup();
+  const tokens=[];
+  x.ctx.window.voyafundraDrafts.forget=(_,__,token)=>{
+    tokens.push(token);
+    return true;
+  };
+  const v=await x.api.review("a");
+  await x.api.useCloud(v);
+  assert.deepEqual(tokens,["review-token"]);
 });
 
 test("review UI presents user-confirmed choices, never automatic merge",()=>{
