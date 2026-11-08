@@ -63,7 +63,7 @@ function setup({ rows = [], trips = [] } = {}) {
   const context = vm.createContext({
     db, trips, alerts, supabaseClient: db,
     notify(message) { alerts.push(message); },
-    window: { voyafundraUX: { setStatus() {} } },
+    window: { voyafundraUX: { setStatus() {} }, voyafundraDrafts: { record() { return "token"; }, forget() { return true; } } },
     console: { log() {}, error() {} },
   });
   const setupCode = `
@@ -77,6 +77,10 @@ function setup({ rows = [], trips = [] } = {}) {
     let cloudUnsavedTripIds = new Set();
     let cloudTripSaveSequence = new Map();
     let cloudWriteGeneration = 0;
+    let cloudRecoveryPendingDrafts = [];
+    let cloudRecoveryReadError = null;
+    let cloudRestoredDrafts = new Map();
+    let cloudRecoveryStorageFaults = new Set();
   `;
   vm.runInContext(setupCode + source.slice(start, end), context);
   return { db, alerts, context,
