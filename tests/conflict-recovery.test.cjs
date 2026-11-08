@@ -8,6 +8,7 @@ const ui = fs.readFileSync(path.join(root, "experience.js"), "utf8");
 
 const row = (id, name, timestamp = "2026-11-01T01:00:00.000Z") =>
   ({ id, user_id: "user-1", updated_at: timestamp,
+     revision: timestamp === "2026-11-01T01:00:00.000Z" ? 1 : 2,
      trip_data: { id, name, budget: 100, options: [], savings: [] } });
 
 function setup({ remote = [row("a", "PC copy")],
@@ -31,9 +32,9 @@ function setup({ remote = [row("a", "PC copy")],
               return Promise.resolve({ data:null, error:Error("duplicate trip") });
             }
             const inserted={ ...JSON.parse(JSON.stringify(payload)),
-              updated_at:"2026-11-08T00:00:00.000Z" };
+              updated_at:"2026-11-08T00:00:00.000Z", revision:1 };
             records.set(payload.id,inserted);
-            return Promise.resolve({ data:[{updated_at:inserted.updated_at}],error:null });
+            return Promise.resolve({ data:[{updated_at:inserted.updated_at,revision:inserted.revision}],error:null });
           }
           if (action !== "update") return query;
           calls.push({ action, ...filter });
@@ -41,9 +42,11 @@ function setup({ remote = [row("a", "PC copy")],
           if (!stored || Object.entries(filter).some(([k,v]) => stored[k]!==v)) {
             return Promise.resolve({ data:[], error:null });
           }
-          const changed = { ...stored, ...JSON.parse(JSON.stringify(payload)) };
+          const changed = { ...stored, ...JSON.parse(JSON.stringify(payload)),
+            revision:stored.revision + 1,
+            updated_at:new Date(Date.parse(stored.updated_at)+1000).toISOString() };
           records.set(stored.id, changed);
-          return Promise.resolve({ data:[{updated_at:changed.updated_at}],error:null });
+          return Promise.resolve({ data:[{updated_at:changed.updated_at,revision:changed.revision}],error:null });
         },
         async maybeSingle() {
           calls.push({ action:"read",...filter });
@@ -64,6 +67,7 @@ function setup({ remote = [row("a", "PC copy")],
     'let trips=JSON.parse(JSON.stringify(initialLocal));',
     'let cloudReady=true, cloudUserId="user-1", cloudEpoch=1;',
     'let cloudTripVersions=new Map([["a","2026-10-01T01:00:00.000Z"]]);',
+    'let cloudTripRevisions=new Map([["a",1]]);',
     'let cloudUnsavedTripIds=new Set(initialPending);',
     'let cloudTripSaveSequence=new Map([["a",1]]);',
     'let cloudWriteGeneration=5, cloudWritesPending=0;',
@@ -96,7 +100,7 @@ test("accepting cloud resolves only selected trip",async()=>{
   assert.equal(x.calls.filter(c=>c.action==="update").length,0);
 });
 
-test("user-approved local version uses atomic updated_at condition",async()=>{
+test("user-approved local version uses atomic server revision condition",async()=>{
   const x=setup({remote:[row("a","PC copy"),row("b","Other cloud")]});
   const v=await x.api.review("a");
   assert.equal(await x.api.useLocal(v),true);
@@ -104,7 +108,7 @@ test("user-approved local version uses atomic updated_at condition",async()=>{
   assert.equal(x.records.get("b").trip_data.name,"Other cloud");
   const writes=x.calls.filter(c=>c.action==="update");
   assert.equal(writes.length,1);
-  assert.equal(writes[0].updated_at,v.updatedAt);
+  assert.equal(writes[0].revision,v.revision);
   assert.equal(vm.runInContext('cloudUnsavedTripIds.size',x.ctx),0);
 });
 
