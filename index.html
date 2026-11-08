@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="mobile.css" />
     <link rel="stylesheet" href="experience.css" />
     <link rel="stylesheet" href="trip-calendar.css" />
+    <link rel="stylesheet" href="trip-features.css" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -39,6 +40,7 @@
 
     <!-- Voyafundra Application -->
     <script defer src="trip-calendar.js"></script>
+    <script defer src="trip-insights.js"></script>
     <script defer src="app.js"></script>
 
     <!-- User Authentication -->
@@ -47,6 +49,7 @@
     <script defer src="mobile.js"></script>
     <script defer src="conflict-recovery.js"></script>
     <script defer src="experience.js"></script>
+    <script defer src="trip-backup.js"></script>
     <script defer src="pwa-updates.js"></script>
   </head>
 
@@ -294,6 +297,25 @@
           <button class="btn btn-outline" type="button" id="discardRecoveryBtn">Discard local changes and reload cloud</button>
           <p id="cloudRecoveryMessage" role="status" aria-live="polite"></p>
         </section>
+        <details class="trip-backup-panel" id="tripBackupPanel">
+          <summary>Data backup &amp; restore</summary>
+          <div class="trip-backup-body">
+            <p>Download a private JSON backup of all saved trips, savings, travel options, and checklists. Keep this file secure.</p>
+            <button type="button" id="exportTripsBtn" class="btn btn-outline">Download all trips</button>
+            <div class="field full">
+              <label for="importTripsFile">Restore a Voyafundra full backup</label>
+              <input id="importTripsFile" type="file" accept=".json,application/json" />
+              <span class="hint">Only missing trips can be restored. Existing trips will not be overwritten or deleted.</span>
+            </div>
+            <pre id="tripBackupPreview" class="trip-backup-preview" role="status">Choose a Voyafundra full backup to preview its contents.</pre>
+            <label class="cloud-recovery-confirm">
+              <input type="checkbox" id="approveTripRestore" />
+              I reviewed the preview and want to restore only the missing trips.
+            </label>
+            <button type="button" id="restoreTripsBtn" class="btn btn-outline" disabled>Restore missing trips</button>
+            <p id="tripBackupMessage" role="status" aria-live="polite"></p>
+          </div>
+        </details>
         <div class="connection-banner" id="connectionBanner" role="status" hidden>
           You're offline. Cloud changes can't be saved or refreshed until you reconnect.
         </div>
