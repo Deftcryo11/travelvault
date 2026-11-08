@@ -49,6 +49,10 @@ function createSession(options = {}) {
     let cloudEpoch = 1;
     let cloudWritesPending = 0;
     let cloudWriteGeneration = 7;
+    let cloudRecoveryPendingDrafts = [];
+    let cloudRecoveryReadError = null;
+    let cloudRestoredDrafts = new Map();
+    let cloudRecoveryStorageFaults = new Set();
     let selectedTripId = "trip-a";
     let currentView = "detail";
   ` + codeUnderTest, ctx);
