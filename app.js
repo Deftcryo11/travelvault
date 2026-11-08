@@ -360,6 +360,10 @@ function discardSavedDrafts() {
 
 /** No trip mutation can replace an unreviewed, older local recovery copy. */
 function canStartTripEdit(tripId = null) {
+  if (window.voyafundraBackup?.isBusy?.()) {
+    notify("Finish the backup restore before editing trips.");
+    return false;
+  }
   if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
     notify("Please review saved recovery drafts before editing.");
     window.voyafundraUX?.showDrafts?.();
@@ -415,6 +419,10 @@ function clearCloudTrips() {
 function saveTrips(tripId, options = {}) {
   if (!cloudReady || !cloudUserId || !tripId) {
     notify("Sign in before saving changes.");
+    return false;
+  }
+  if (window.voyafundraBackup?.isBusy?.()) {
+    notify("Finish restoring the backup before editing trips.");
     return false;
   }
   if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
