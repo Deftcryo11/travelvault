@@ -45,7 +45,7 @@ function setup({ remote = [row("a", "PC copy")],
     }
   };
   const ctx=vm.createContext({
-    window:{voyafundraUX:{setStatus() {}}},
+    window:{voyafundraUX:{setStatus() {}},voyafundraDrafts:{forget() { return true; }}},
     navigator:{onLine:true},supabaseClient:client,
     initialLocal:local, initialPending:pending, Date, render() {}
   });
@@ -57,6 +57,7 @@ function setup({ remote = [row("a", "PC copy")],
     'let cloudTripSaveSequence=new Map([["a",1]]);',
     'let cloudWriteGeneration=5, cloudWritesPending=0;',
     'let cloudSaveError=Error("conflict");',
+    'let cloudRestoredDrafts=new Map();let cloudRecoveryStorageFaults=new Set();',
     'let cloudWriteQueue=Promise.reject(Error("conflict")); cloudWriteQueue.catch(()=>{});',
     'let selectedTripId="a";'
   ].join("\n");
