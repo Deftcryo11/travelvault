@@ -227,14 +227,17 @@
         compareTable.appendChild(detail);
       }
     }
-    compareNotice.textContent = review.remote
-      ? differences + " field(s) differ. Cloud last updated: " +
-        new Date(review.updatedAt).toLocaleString() + "."
-      : "This trip no longer exists in the cloud. You can accept its removal " +
-        "or download your local backup. To recreate it, use a new trip.";
     const isRecoverableNewTrip = !!review.local && !review.remote &&
       cloudRestoredDrafts.has(review.id) &&
       cloudRestoredDrafts.get(review.id).baseVersion == null;
+    compareNotice.textContent = review.remote
+      ? differences + " field(s) differ. Cloud last updated: " +
+        new Date(review.updatedAt).toLocaleString() + "."
+      : isRecoverableNewTrip
+        ? "This new trip was interrupted before reaching the cloud. " +
+          "You can insert it only after explicitly reviewing and confirming."
+        : "This trip no longer exists in the cloud. You can accept its removal " +
+          "or export the local draft. Existing deleted trips are not recreated automatically.";
     acceptLocalButton.disabled = !(review.local && (review.remote || isRecoverableNewTrip));
     compareSection.hidden = false;
   }
