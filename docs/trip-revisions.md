@@ -30,10 +30,10 @@ was exported privately before migration and **must not be committed to GitHub**.
 
 ### Compatibility and known release gate
 
-The current production `main` app still uses full-list upserts and
-snapshot-inferred deletions. The new trigger keeps that app's columns and
-permissions compatible but **does not prevent old clients from overwriting
-newer beta edits or deleting trips inferred from stale snapshots**.
+Before the beta-to-main release, `main` used full-list upserts and
+snapshot-inferred deletions. The database trigger keeps those older client
+columns compatible but **does not prevent already-open legacy tabs from
+overwriting newer edits or deleting trips inferred from stale snapshots**.
 
 The database revision migration alone is not enough to eliminate those
 legacy-client hazards. Keep production and beta sessions from editing the
