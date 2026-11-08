@@ -110,3 +110,70 @@ of rollback.
    must not discard the other draft.
 8. Check the above behavior on both iPhone Home Screen mode and desktop.
 
+
+## Beta recovery update — safe logout and interrupted saves
+
+The beta now writes emergency recovery snapshots using browser localStorage
+**synchronously before starting each trip save request**. Journal keys are
+scoped by the authenticated Supabase user ID and trip ID. Only confirmed writes,
+explicit acceptance of the cloud copy, or an explicit user discard clear a
+matching saved snapshot. A failed save leaves its recovery draft in place.
+
+After an interrupted session:
+1. Sign back into the **same account and same browser/device**.
+2. The "Unsaved trip drafts found on this device" banner appears before any
+   trip editing. No cloud data is overwritten automatically.
+3. You may download a private JSON backup. Click "Restore for review" to stage
+   the saved trip in memory (without sending it to Supabase).
+4. Open "Review unsaved", select the trip, and compare device versus cloud.
+5. Explicitly choose "Use cloud version" or "Save my version to cloud."
+   Recovered **new** trips may be inserted only by an explicit choice and only
+   if no cloud trip with that ID exists. Existing trips use conditional
+   \`updated_at\` checks; a changed cloud revision rejects the overwrite.
+6. If the drafts are disposable, use the separate discard option with its
+   acknowledgement and confirmation.
+
+Sign-out safety:
+- Manual logout is blocked if there are unconfirmed in-memory changes,
+  unresolved restored drafts, or staged recovery records.
+- Inactivity sign-out can proceed while there are unsaved edits only if every
+  unsaved trip has a verified local journal copy.
+- If the browser disallows local storage, automatic sign-out is temporarily
+  delayed and retried to avoid destroying unprotected edits. This is a
+  **privacy tradeoff** and requires follow-up session-lock design.
+- Open edit forms must be submitted or closed before logout.
+
+Limitations and privacy:
+- These emergency drafts are local browser storage, **not encrypted**, not a
+  cloud backup, and not available automatically on other devices.
+- Anyone with access to the same browser profile or same-origin script may
+  be able to inspect local storage. Use trusted personal devices only.
+- Browser/private-mode storage can be cleared or denied. Quota limits are
+  enforced; a storage failure generates a warning rather than a false promise.
+- Different tabs editing the same trip may overwrite the same per-trip journal
+  key; token-checked clearing prevents an older save from deleting a newer
+  journal entry, but this is not full multi-tab synchronization.
+- Edits inside an **unsubmitted** modal are not yet journaled.
+- Failed deletions are not automatically replayed on a future login.
+- Never use genuine trip information to test the beta while it still shares
+  the production Supabase project.
+
+### Testing to complete on PC and iPhone
+
+1. Create and save a disposable trip. Confirm "All changes saved" and that
+   refreshing does NOT show a recovery banner for a successful write.
+2. Trigger a failed save (e.g. airplane mode immediately before submission).
+   Verify the unconfirmed warning appears. A manual logout must be blocked.
+3. Reopen the app on the **same device and same account**. Verify a local
+   recovery banner appears, and no draft was uploaded automatically.
+4. Download a backup, restore for review, compare versions, accept cloud.
+   Verify no unrelated trip changed and the banner no longer appears.
+5. Repeat using "Save my version to cloud"; confirm from another device.
+6. Repeat with a newly created trip that failed to save: explicit review must
+   allow creating it if absent remotely, but not overwrite a newer cloud copy.
+7. Test another account in the same browser profile: its recovery banner
+   must not show the first account's records.
+8. Test iPhone PWA closure/reopening, dark mode, and older app sessions.
+
+Do not merge until server-managed revisions, RLS checks, and end-to-end
+integration testing are completed.
