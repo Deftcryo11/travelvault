@@ -23,13 +23,23 @@
   const acceptCloudButton = document.getElementById("acceptCloudTripBtn");
   const acceptLocalButton = document.getElementById("acceptLocalTripBtn");
   const acknowledgeConflict = document.getElementById("acknowledgeConflictChoice");
+  const savedDraftsBanner = document.getElementById("savedDraftsBanner");
+  const savedDraftsDetails = document.getElementById("savedDraftsDetails");
+  const savedDraftsMessage = document.getElementById("savedDraftsMessage");
+  const restoreSavedDraftsButton = document.getElementById("restoreSavedDraftsBtn");
+  const downloadSavedDraftsButton = document.getElementById("downloadSavedDraftsBtn");
+  const discardSavedDraftsButton = document.getElementById("discardSavedDraftsBtn");
+  const acknowledgeSavedDiscard = document.getElementById("acknowledgeSavedDraftDiscard");
 
   if (!status || !statusText || !refreshButton || !offlineBanner ||
       !reviewButton || !recoveryPanel || !recoveryDetails ||
       !recoveryMessage || !downloadBackupButton || !closeRecoveryButton ||
       !discardButton || !acknowledgeDiscard || !compareTripSelect ||
       !compareButton || !compareSection || !compareTable || !compareNotice ||
-      !acceptCloudButton || !acceptLocalButton || !acknowledgeConflict) return;
+      !acceptCloudButton || !acceptLocalButton || !acknowledgeConflict ||
+      !savedDraftsBanner || !savedDraftsDetails || !savedDraftsMessage ||
+      !restoreSavedDraftsButton || !downloadSavedDraftsButton ||
+      !discardSavedDraftsButton || !acknowledgeSavedDiscard) return;
 
   let state = "loading";
   let lastMessage = "Checking cloud connection...";
@@ -44,6 +54,8 @@
       lastMessage = message;
       redraw();
     },
+    showRecovery: () => showRecovery(),
+    showDrafts: () => showDrafts(),
   };
   window.voyafundraUX = view;
 
@@ -66,13 +78,27 @@
     const offline = !navigator.onLine;
     const loggedIn = document.body.classList.contains("authenticated");
     const unsaved = loggedIn && hasUnconfirmedChanges();
+    const pendingDrafts = loggedIn && (cloudRecoveryPendingDrafts.length > 0 ||
+      !!cloudRecoveryReadError);
+    savedDraftsBanner.hidden = !pendingDrafts;
+    if (pendingDrafts) {
+      savedDraftsDetails.textContent = cloudRecoveryReadError
+        ? "Recovery storage could not be read: " + cloudRecoveryReadError.message +
+          ". Do not clear site data."
+        : cloudRecoveryPendingDrafts.length + " saved draft(s) require review.";
+    }
+    restoreSavedDraftsButton.disabled = !!cloudRecoveryReadError || !navigator.onLine;
+    discardSavedDraftsButton.disabled = !!cloudRecoveryReadError;
+    downloadSavedDraftsButton.disabled = !!cloudRecoveryReadError;
     offlineBanner.hidden = !offline || !loggedIn;
     status.dataset.state = offline ? "offline" : state;
     statusText.textContent = offline
       ? "Offline — cloud access unavailable"
-      : unsaved && !cloudWritesPending
-        ? "Unsaved changes — review before refreshing"
-        : lastMessage;
+      : pendingDrafts
+        ? "Recovery drafts found — review before editing"
+        : unsaved && !cloudWritesPending
+          ? "Unsaved changes — review before refreshing"
+          : lastMessage;
     refreshButton.disabled = offline || refreshing || recovering ||
       !loggedIn || !cloudReady || cloudWritesPending > 0;
     reviewButton.hidden = !unsaved || cloudWritesPending > 0;
@@ -109,6 +135,15 @@
     compareSection.hidden = true;
     acknowledgeConflict.checked = false;
     compareTable.replaceChildren();
+  }
+
+  function showDrafts() {
+    redraw();
+    if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
+      savedDraftsBanner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else if (hasUnconfirmedChanges()) {
+      showRecovery();
+    }
   }
 
   function showRecovery() {
@@ -197,7 +232,10 @@
         new Date(review.updatedAt).toLocaleString() + "."
       : "This trip no longer exists in the cloud. You can accept its removal " +
         "or download your local backup. To recreate it, use a new trip.";
-    acceptLocalButton.disabled = !review.remote || !review.local;
+    const isRecoverableNewTrip = !!review.local && !review.remote &&
+      cloudRestoredDrafts.has(review.id) &&
+      cloudRestoredDrafts.get(review.id).baseVersion == null;
+    acceptLocalButton.disabled = !(review.local && (review.remote || isRecoverableNewTrip));
     compareSection.hidden = false;
   }
 
@@ -282,6 +320,11 @@
     if (refreshing || recovering || !navigator.onLine || !cloudReady || !cloudUserId) return;
     if (cloudWritesPending > 0) {
       view.setStatus("saving", "Wait for current saves before refreshing");
+      return;
+    }
+    if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
+      view.setStatus("error", "Review local recovery drafts before refreshing");
+      showDrafts();
       return;
     }
     if (cloudSaveError || cloudUnsavedTripIds.size) {
@@ -383,6 +426,87 @@
       redraw();
     }
   }
+
+
+  function downloadStoredDrafts() {
+    if (!cloudUserId || !window.voyafundraDrafts) return;
+    const entries = window.voyafundraDrafts.list(cloudUserId);
+    if (!entries.length) {
+      savedDraftsMessage.textContent = "No recovery drafts remain.";
+      return;
+    }
+    const payload = JSON.stringify({
+      format: "voyafundra-recovery-export-v1",
+      created_at: new Date().toISOString(),
+      drafts: entries,
+    }, null, 2);
+    const url = URL.createObjectURL(new Blob([payload], {
+      type: "application/json",
+    }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "voyafundra-recovered-" +
+      new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 20000);
+    savedDraftsMessage.textContent =
+      "Backup download requested. Check that the file was saved.";
+  }
+
+  function stageStoredDrafts() {
+    if (!navigator.onLine) {
+      savedDraftsMessage.textContent = "Reconnect to compare drafts with the cloud.";
+      return;
+    }
+    if (!window.confirm(
+      "Restore local drafts for comparison? They will replace the local " +
+      "displayed copy of affected trips, but NO data will be sent to the cloud."
+    )) return;
+    try {
+      const count = restoreSavedDraftsForReview();
+      redraw();
+      if (count > 0) showRecovery();
+      else savedDraftsMessage.textContent =
+        "No save drafts were available to restore.";
+    } catch (error) {
+      savedDraftsMessage.textContent =
+        "Draft restoration failed: " + (error.message || String(error));
+    }
+  }
+
+  function discardStoredDrafts() {
+    if (!acknowledgeSavedDiscard.checked) {
+      savedDraftsMessage.textContent =
+        "Confirm the drafts are disposable or saved in a backup first.";
+      return;
+    }
+    if (!window.confirm(
+      "Permanently discard the stored recovery drafts from THIS browser? " +
+      "Cloud trips will not be changed."
+    )) return;
+    try {
+      discardSavedDrafts();
+      acknowledgeSavedDiscard.checked = false;
+      savedDraftsMessage.textContent = "";
+      redraw();
+    } catch (error) {
+      savedDraftsMessage.textContent =
+        "Could not discard stored drafts: " + (error.message || String(error));
+    }
+  }
+
+  restoreSavedDraftsButton.addEventListener("click", stageStoredDrafts);
+  downloadSavedDraftsButton.addEventListener("click", () => {
+    try {
+      downloadStoredDrafts();
+    } catch (error) {
+      savedDraftsMessage.textContent =
+        "Backup failed: " + (error.message || String(error));
+    }
+  });
+  discardSavedDraftsButton.addEventListener("click", discardStoredDrafts);
 
   compareButton.addEventListener("click", () => void compareUnsavedTrip());
   compareTripSelect.addEventListener("change", () => {
