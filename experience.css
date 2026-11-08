@@ -234,3 +234,28 @@
   .cloud-conflict-raw { grid-template-columns: 1fr; }
   .cloud-conflict-actions { flex-direction: column; }
 }
+
+
+/* On-device recovery drafts: explicit review and privacy notice. */
+.saved-drafts-banner {
+  margin: -4px 0 16px;
+  padding: 17px 18px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-left: 4px solid var(--primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.saved-drafts-banner[hidden] { display: none !important; }
+.saved-drafts-banner h2 { margin: 0 0 10px; font-size: 17px; }
+.saved-drafts-banner p { font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.saved-drafts-actions { display: flex; gap: 9px; flex-wrap: wrap; margin: 13px 0; }
+.saved-drafts-actions .btn, #discardSavedDraftsBtn { min-height: 44px; }
+#discardSavedDraftsBtn { border-color: var(--negative); color: var(--text); }
+#savedDraftsMessage { font-weight: 700; }
+@media (max-width: 700px) {
+  .saved-drafts-banner { padding: 15px 13px; }
+  .saved-drafts-actions { flex-direction: column; }
+  .saved-drafts-actions .btn, #discardSavedDraftsBtn { width: 100%; }
+}
