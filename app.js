@@ -1988,7 +1988,7 @@ function travelOptionForm(existing = null) {
       }
 
       saveTrips(trip.id);
-      notify("Travel option saved.");
+      notify("Travel option queued — wait for cloud confirmation.");
 
       return true;
     },
