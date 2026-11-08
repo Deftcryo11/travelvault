@@ -410,11 +410,9 @@ function clearCloudTrips() {
  * Persist exactly one edited trip or explicit deletion. This must never
  * infer deletions from the device's cached list of trip IDs.
  *
- * Existing records use an atomic updated_at compare-and-swap: another
- * device's write changes the version and our stale write matches zero rows.
- *
- * A later migration can replace timestamps with a stronger integer revision,
- * but these safeguards work against the existing production table schema.
+ * Existing records use the database-managed integer revision for atomic
+ * compare-and-swap. Another device's write increments the server revision,
+ * so a stale edit or deletion matches zero rows.
  */
 function saveTrips(tripId, options = {}) {
   if (!cloudReady || !cloudUserId || !tripId) {
