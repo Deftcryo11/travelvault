@@ -32,18 +32,19 @@ function fakeDatabase(initial) {
           calls.push({ operation, filters: { ...filters } });
           if (operation === "insert") {
             if (records.has(payload.id)) return { data: null, error: Error("duplicate") };
-            const item = { ...payload, updated_at: "2026-11-01T00:00:00.000Z" };
+            const item = { ...payload, updated_at: "2026-11-01T00:00:00.000Z", revision: 1 };
             records.set(item.id, item);
-            return { data: [{ updated_at: item.updated_at }], error: null };
+            return { data: [{ updated_at: item.updated_at, revision: item.revision }], error: null };
           }
           const row = records.get(filters.id);
           const matched = row && Object.entries(filters)
             .every(([key, value]) => row[key] === value);
           if (!matched) return { data: [], error: null };
           if (operation === "update") {
-            const next = { ...row, ...payload };
+            const next = { ...row, ...payload, revision: row.revision + 1,
+              updated_at: new Date(Date.parse(row.updated_at) + 1000).toISOString() };
             records.set(row.id, next);
-            return { data: [{ updated_at: next.updated_at }], error: null };
+            return { data: [{ updated_at: next.updated_at, revision: next.revision }], error: null };
           }
           if (operation === "delete") {
             records.delete(row.id);
@@ -71,6 +72,7 @@ function setup({ rows = [], trips = [] } = {}) {
     let cloudUserId = "test-user";
     let cloudEpoch = 1;
     let cloudTripVersions = new Map(Array.from(db.records.entries(), ([id, row]) => [id, row.updated_at]));
+    let cloudTripRevisions = new Map(Array.from(db.records.entries(), ([id, row]) => [id, row.revision]));
     let cloudWriteQueue = Promise.resolve();
     let cloudWritesPending = 0;
     let cloudSaveError = null;
@@ -94,7 +96,7 @@ function setup({ rows = [], trips = [] } = {}) {
 
 const baseTime = "2026-10-01T00:00:00.000Z";
 function row(id, name, updated_at = baseTime) {
-  return { id, user_id: "test-user", updated_at, trip_data: { id, name } };
+  return { id, user_id: "test-user", updated_at, revision: updated_at === baseTime ? 1 : 2, trip_data: { id, name } };
 }
 
 test("updating one trip does not overwrite or delete another trip", async () => {
@@ -106,13 +108,13 @@ test("updating one trip does not overwrite or delete another trip", async () => 
   assert.equal(env.db.records.get("a").trip_data.name, "edited");
   assert.equal(env.db.records.get("b").trip_data.name, "untouched");
   assert.deepEqual(env.db.calls.map((c) => c.operation), ["update"]);
-  assert.equal(env.db.calls[0].filters.updated_at, baseTime);
+  assert.equal(env.db.calls[0].filters.revision, 1);
 });
 
 test("stale edit is rejected instead of overwriting newer cloud data", async () => {
   const env = setup({ rows: [row("a", "PC edit", "2026-11-01T10:00:00.000Z")],
     trips: [{ id: "a", name: "phone edit" }] });
-  vm.runInContext(`cloudTripVersions.set("a", "${baseTime}")`, env.context);
+  vm.runInContext(`cloudTripVersions.set("a", "${baseTime}");cloudTripRevisions.set("a", 1)`, env.context);
   await assert.rejects(env.save("a"), /changed on another device/);
   assert.equal(env.db.records.get("a").trip_data.name, "PC edit");
   assert.equal(env.context.alerts.length, 1);
@@ -135,13 +137,13 @@ test("explicit delete targets one row with the version condition", async () => {
   assert.equal(env.db.records.has("b"), true);
   assert.deepEqual(env.db.calls.map((c) => c.operation), ["delete"]);
   assert.equal(env.db.calls[0].filters.id, "a");
-  assert.equal(env.db.calls[0].filters.updated_at, baseTime);
+  assert.equal(env.db.calls[0].filters.revision, 1);
 });
 
 test("stale delete is rejected and retains the cloud trip", async () => {
   const env = setup({ rows: [row("a", "newer", "2026-11-01T10:00:00.000Z")],
     trips: [{ id: "a", name: "older" }] });
-  vm.runInContext(`cloudTripVersions.set("a", "${baseTime}")`, env.context);
+  vm.runInContext(`cloudTripVersions.set("a", "${baseTime}");cloudTripRevisions.set("a", 1)`, env.context);
   await assert.rejects(env.save("a", { deleteTrip: true }), /changed on another device/);
   assert.equal(env.db.records.get("a").trip_data.name, "newer");
 });
@@ -156,7 +158,7 @@ test("no whole-collection upsert or inferred deletion remains", () => {
   const saveCode = source.slice(start, end);
   assert.doesNotMatch(saveCode, /\.upsert\(/);
   assert.doesNotMatch(saveCode, /deletedIds|\.in\("id"/);
-  assert.match(saveCode, /\.eq\("updated_at", previous\)/);
+  assert.match(saveCode, /\.eq\("revision", previousRevision\)/);
   assert.match(source, /if \(options\.deleteTrip\)/);
   assert.match(source, /pending\.then\(\(confirmed\)/);
 });
