@@ -1,0 +1,124 @@
+/* Voyafundra additions: insights, checklist, and private trip backups.
+   Respect existing light/dark theme tokens and iPhone safe areas. */
+.trip-countdown {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--primary);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 750;
+  padding: 6px 10px;
+  margin-top: 10px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.trip-countdown.is-past { color: var(--text-secondary); }
+.insights-panel .panel-head { margin-bottom: 14px; }
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.insight-metric {
+  padding: 14px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.insight-metric .insight-label { color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.insight-metric strong {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: clamp(17px, 2vw, 24px);
+  overflow-wrap: anywhere;
+}
+.insight-metric small { color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
+.insight-comment {
+  padding: 12px 14px;
+  background: var(--surface-alt);
+  border-left: 3px solid var(--primary);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.insight-comment.overspent { border-left-color: var(--negative); }
+.insight-separator { border: 0; border-top: 1px solid var(--border); margin: 21px 0; }
+.insight-subheading { font-size: 14px; font-weight: 800; margin: 0 0 10px; }
+.savings-bars { display: grid; gap: 12px; margin: 10px 0; }
+.savings-bar-row { min-width: 0; display: grid; grid-template-columns: minmax(70px, .7fr) minmax(0,2fr) minmax(95px,1fr); gap: 10px; align-items: center; }
+.savings-bar-row strong { font-size: 12px; }
+.savings-bar-row small { font-size: 11px; color: var(--text-secondary); text-align: right; }
+.savings-track { background: var(--progress-bg); border-radius: 999px; min-height: 12px; overflow: hidden; }
+.savings-fill { height: 12px; border-radius: 999px; background: var(--primary); }
+.savings-fill.is-over { background: var(--positive); }
+.travel-breakdown { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+.travel-breakdown > div {
+  padding: 11px; background: var(--surface-alt); border: 1px solid var(--border);
+  border-radius: 10px; min-width: 0;
+}
+.travel-breakdown strong { font-size: 13px; display: block; overflow-wrap: anywhere; }
+.travel-breakdown small { color: var(--text-secondary); font-size: 11px; display: block; margin-top: 5px; }
+.trip-checklist-panel .panel-head { gap: 12px; }
+.checklist-summary { font-size: 12px; color: var(--text-secondary); margin: 8px 0 14px; }
+.checklist-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.checklist-item { background: var(--surface-alt); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.checklist-toggle {
+  min-width: 38px; min-height: 38px; width: 38px; height: 38px; border: 1px solid var(--border-strong);
+  border-radius: 11px; background: var(--input-bg); color: var(--text); font-size: 18px;
+  display: inline-flex; align-items: center; justify-content: center; flex: none; cursor: pointer;
+}
+.checklist-toggle[aria-pressed="true"] { background: var(--primary); color: #fff; border-color: var(--primary); }
+.checklist-task-copy { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.checklist-task-copy strong { font-size: 13px; display: block; }
+.checklist-task-copy small { font-size: 11px; color: var(--text-secondary); }
+.checklist-item.is-done .checklist-task-copy strong { text-decoration: line-through; opacity: .7; }
+.checklist-item .inline-actions { flex: none; gap: 5px; }
+.checklist-item .inline-actions .btn-link { min-height: 38px; padding: 6px; font-size: 12px; }
+.checklist-actions { display: flex; gap: 9px; flex-wrap: wrap; }
+.checklist-actions .btn { min-height: 42px; }
+.checklist-empty { padding: 13px; background: var(--surface-alt); border-radius: 11px; font-size: 13px; color: var(--text-secondary); margin: 0 0 14px; }
+.trip-backup-panel {
+  margin: 0 0 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.trip-backup-panel > summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+.trip-backup-panel[open] > summary { background: var(--surface-alt); }
+.trip-backup-body { display: grid; gap: 13px; padding: 14px 16px 18px; font-size: 13px; }
+.trip-backup-body p { line-height: 1.5; margin: 0; }
+.trip-backup-body > .btn { justify-self: start; min-height: 43px; }
+.trip-backup-body .field input { color: var(--text); background: var(--input-bg); border: 1px solid var(--border-strong); border-radius: 9px; padding: 10px; }
+.trip-backup-preview { background: var(--surface-alt); border-radius: 10px; border: 1px solid var(--border); padding: 13px; font-family: inherit; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+.trip-backup-body .cloud-recovery-confirm { font-size: 12px; }
+#tripBackupMessage { font-weight: 700; color: var(--text-secondary); }
+@media (max-width: 700px) {
+  .insights-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .travel-breakdown { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .savings-bar-row { grid-template-columns: minmax(65px, .7fr) minmax(0,2fr); }
+  .savings-bar-row small { grid-column: 2; text-align: left; }
+  .checklist-item { flex-wrap: wrap; }
+  .checklist-item .inline-actions { width: 100%; justify-content: flex-end; }
+  .checklist-task-copy { flex: 1 1 calc(100% - 54px); }
+  .trip-backup-body > .btn { justify-self: stretch; }
+}
+@media (max-width: 380px) {
+  .insights-grid { grid-template-columns: minmax(0,1fr); }
+  .checklist-actions { flex-direction: column; }
+  .checklist-actions .btn { width: 100%; }
+}
