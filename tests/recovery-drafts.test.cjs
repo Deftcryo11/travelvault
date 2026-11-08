@@ -138,7 +138,7 @@ test("manual logout blocks a failed cloud edit even when queue is settled", asyn
     'let logoutInProgress=false, activeUserId="user-1", idleTimer=null;',
     'let cloudSaveError=Error("Not saved");',
     'let cloudUnsavedTripIds=new Set(["trip-a"]);',
-    'let cloudRecoveryPendingDrafts=[], cloudRecoveryReadError=null;',
+    'let cloudRecoveryPendingDrafts=[], cloudRecoveryReadError=null; let cloudWritesPending=0;',
     'let cloudRecoveryStorageFaults=new Set();'
   ].join("\n");
   vm.runInContext(init + "\n" + auth.slice(start, end), ctx);
@@ -166,7 +166,7 @@ test("unprotected failed edits delay automatic logout", async () => {
   vm.runInContext([
     'let logoutInProgress=false, activeUserId="user-1", idleTimer=null;',
     'let cloudSaveError=Error("Failed");let cloudUnsavedTripIds=new Set(["trip-a"]);',
-    'let cloudRecoveryPendingDrafts=[],cloudRecoveryReadError=null;',
+    'let cloudRecoveryPendingDrafts=[],cloudRecoveryReadError=null;let cloudWritesPending=0;',
     'let cloudRecoveryStorageFaults=new Set();'
   ].join("\n")+"\n"+auth.slice(begin,end),ctx);
   await vm.runInContext("logoutUser(true)",ctx);
