@@ -42,6 +42,7 @@
     <script defer src="app.js"></script>
 
     <!-- User Authentication -->
+    <script defer src="recovery-drafts.js"></script>
     <script defer src="auth.js"></script>
     <script defer src="mobile.js"></script>
     <script defer src="conflict-recovery.js"></script>
@@ -240,10 +241,26 @@
             </button>
           </div>
         </section>
+        <section class="saved-drafts-banner" id="savedDraftsBanner" aria-label="Saved trip recovery" hidden>
+          <h2>Unsaved trip drafts found on this device</h2>
+          <p id="savedDraftsDetails"></p>
+          <p>These are local copies from a previous interrupted session. They have NOT been sent back to the cloud. Restoring them only stages them for comparison; nothing is overwritten automatically.</p>
+          <p>Local recovery copies are stored in this browser and are not encrypted. Keep this device private and download a backup before discarding any data.</p>
+          <div class="saved-drafts-actions">
+            <button type="button" class="btn btn-primary" id="restoreSavedDraftsBtn">Restore for review</button>
+            <button type="button" class="btn btn-outline" id="downloadSavedDraftsBtn">Download backup</button>
+          </div>
+          <label class="cloud-recovery-confirm">
+            <input type="checkbox" id="acknowledgeSavedDraftDiscard">
+            I have downloaded a backup, or these are disposable test drafts.
+          </label>
+          <button type="button" class="btn btn-outline" id="discardSavedDraftsBtn">Discard stored drafts</button>
+          <p id="savedDraftsMessage" role="status" aria-live="polite"></p>
+        </section>
         <section class="cloud-recovery-panel" id="cloudRecoveryPanel" aria-labelledby="cloudRecoveryTitle" hidden>
           <h2 id="cloudRecoveryTitle">Review unsaved trip changes</h2>
           <p id="cloudRecoveryDetails"></p>
-          <p>Your changes are still in this device's current app session. Download a backup before choosing to discard any unsaved changes. Keep your backup private.</p>
+          <p>These unconfirmed edits are currently on this device, with recovery copies stored locally when the browser permits. Download a backup before discarding changes. Keep your backup private.</p>
           <div class="cloud-recovery-actions">
             <button class="btn btn-outline" type="button" id="downloadRecoveryBackupBtn">Download unsaved backup</button>
             <button class="btn btn-outline" type="button" id="closeCloudRecoveryBtn">Keep my edits</button>
