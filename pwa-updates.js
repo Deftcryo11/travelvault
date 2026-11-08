@@ -19,7 +19,8 @@
     "index.html", "app.js", "auth.js", "styles.css",
     "mobile.css", "mobile.js", "experience.css", "experience.js",
     "trip-calendar.js", "trip-calendar.css", "conflict-recovery.js",
-    "recovery-drafts.js",
+    "recovery-drafts.js", "trip-insights.js", "trip-features.js",
+    "trip-features.css", "trip-backup.js",
     "pwa-updates.js", "manifest.webmanifest"
   ];
   const CHECK_INTERVAL_MS = 120000;
