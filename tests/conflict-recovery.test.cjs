@@ -45,7 +45,7 @@ function setup({ remote = [row("a", "PC copy")],
     }
   };
   const ctx=vm.createContext({
-    window:{voyafundraUX:{setStatus() {}},voyafundraDrafts:{forget() { return true; }}},
+    window:{voyafundraUX:{setStatus() {}},voyafundraDrafts:{forget() { return true; }, readEntry() { return { token: "review-token" }; }}},
     navigator:{onLine:true},supabaseClient:client,
     initialLocal:local, initialPending:pending, Date, render() {}
   });
