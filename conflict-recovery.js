@@ -53,16 +53,21 @@
       remote: row?.trip_data && typeof row.trip_data === "object"
         ? clone({ ...row.trip_data, id: row.id }) : null,
       updatedAt: row?.updated_at ?? null,
+      // A second tab may save a newer draft while the comparison is open.
+      // Never erase that other tab's journal entry after resolving this one.
+      draftToken: window.voyafundraDrafts
+        ? window.voyafundraDrafts.readEntry(userId, id)?.token ?? null
+        : null,
     };
     assertReviewFresh(result, generation);
     return result;
   }
 
-  function finishResolution(id, message) {
-    // A resolved trip must also clear its persistent journal so a completed
-    // save does not appear as a stale recoverable draft next time.
-    if (window.voyafundraDrafts && cloudUserId) {
-      window.voyafundraDrafts.forget(cloudUserId, id);
+  function finishResolution(id, message, draftToken) {
+    // Only delete the journal entry that belonged to this comparison.
+    // Another tab may have replaced the entry with a newer local edit.
+    if (window.voyafundraDrafts && cloudUserId && draftToken) {
+      window.voyafundraDrafts.forget(cloudUserId, id, draftToken);
     }
     cloudRestoredDrafts.delete(id);
     cloudRecoveryStorageFaults.delete(id);
@@ -101,7 +106,8 @@
       cloudTripVersions.delete(reviewed.id);
       if (selectedTripId === reviewed.id) selectedTripId = null;
     }
-    finishResolution(reviewed.id, "Cloud version accepted for this trip");
+    finishResolution(reviewed.id, "Cloud version accepted for this trip",
+      reviewed.draftToken);
     render();
     return true;
   }
@@ -156,7 +162,8 @@
       cloudTripVersions.set(reviewed.id, data[0].updated_at);
       // If another edit was queued in the meantime, it still needs saving.
       if (cloudTripSaveSequence.get(reviewed.id) === sequence) {
-        finishResolution(reviewed.id, "Your chosen trip version saved");
+        finishResolution(reviewed.id, "Your chosen trip version saved",
+          reviewed.draftToken);
       }
       return true;
     });
