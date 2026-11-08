@@ -1,8 +1,8 @@
 "use strict";
 
 /* Cross-device conflict review. Never merge or overwrite without an
-   explicit choice. This module uses the existing per-trip updated_at
-   compare-and-swap; the server-side revision migration is still pending. */
+   explicit choice. The server increments revision on every trip change,
+   and stale updates/deletes are rejected by revision filters. */
 (() => {
   const clone = (value) => value == null ? null : JSON.parse(JSON.stringify(value));
 
