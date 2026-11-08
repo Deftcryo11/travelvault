@@ -298,6 +298,70 @@ function getCloudRecoverySnapshot() {
 }
 
 
+
+/**
+ * Explicit local restoration only. Nothing is written to Supabase here.
+ * Reuse the ORIGINAL cloud version token so stale drafts cannot silently
+ * overwrite newer cloud data when they are eventually resolved.
+ */
+function restoreSavedDraftsForReview() {
+  if (!cloudReady || !cloudUserId || cloudWritesPending ||
+      cloudRecoveryReadError) {
+    throw new Error("Finish loading and saving before restoring drafts.");
+  }
+  const saved = window.voyafundraDrafts?.list(cloudUserId) || [];
+  if (!saved.length) {
+    cloudRecoveryPendingDrafts = [];
+    return 0;
+  }
+  for (const draft of saved) {
+    if (draft.action !== "save" || !draft.trip || draft.trip.id !== draft.tripId) {
+      // Never replay deletion intentions automatically.
+      continue;
+    }
+    const local = JSON.parse(JSON.stringify(draft.trip));
+    const idx = trips.findIndex((item) => item.id === draft.tripId);
+    if (idx >= 0) trips[idx] = local;
+    else trips.unshift(local);
+    if (draft.baseVersion) cloudTripVersions.set(draft.tripId, draft.baseVersion);
+    else cloudTripVersions.delete(draft.tripId);
+    cloudRestoredDrafts.set(draft.tripId, { baseVersion: draft.baseVersion });
+    cloudUnsavedTripIds.add(draft.tripId);
+    cloudTripSaveSequence.set(draft.tripId, 1);
+  }
+  cloudRecoveryPendingDrafts = [];
+  if (cloudUnsavedTripIds.size) {
+    cloudSaveError = new Error("Recovered drafts require review before saving.");
+    window.voyafundraUX?.setStatus("error", "Recovered local edits — compare with cloud");
+  }
+  render();
+  return cloudUnsavedTripIds.size;
+}
+
+/** Discard staged recovery drafts without modifying any cloud trip. */
+function discardSavedDrafts() {
+  if (!cloudReady || !cloudUserId || cloudWritesPending) {
+    throw new Error("Finish loading and saving first.");
+  }
+  const saved = window.voyafundraDrafts?.list(cloudUserId) || [];
+  for (const draft of saved) {
+    window.voyafundraDrafts.forget(cloudUserId, draft.tripId, draft.token);
+  }
+  cloudRecoveryPendingDrafts = [];
+  cloudRecoveryReadError = null;
+  if (cloudUnsavedTripIds.size === 0) cloudSaveError = null;
+  window.voyafundraUX?.setStatus("saved", "Stored drafts discarded by request");
+  return saved.length;
+}
+
+/** No trip mutation can replace an unreviewed, older local recovery copy. */
+function canStartTripEdit() {
+  if (!cloudRecoveryPendingDrafts.length && !cloudRecoveryReadError) return true;
+  notify("Please review recovered trip drafts before editing.");
+  window.voyafundraUX?.showDrafts?.();
+  return false;
+}
+
 /**
  * Clear all trip information from application memory.
  *
@@ -2108,7 +2172,7 @@ function initializeTheme() {
 ========================================== */
 
 $("#newTripBtn").addEventListener("click", () => {
-  tripForm();
+  if (canStartTripEdit()) tripForm();
 });
 
 $("#allTripsNav").addEventListener("click", () => {
@@ -2167,6 +2231,10 @@ $("#appContent").addEventListener("click", (event) => {
   const action = button.dataset.action;
   const id = button.dataset.id;
   const trip = getSelectedTrip();
+
+  if (["new", "edit-trip", "change-status", "delete-trip", "add-option",
+       "edit-option", "delete-option", "add-saving", "edit-saving",
+       "delete-saving"].includes(action) && !canStartTripEdit()) return;
 
   switch (action) {
     case "new":
