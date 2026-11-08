@@ -759,6 +759,8 @@ function tripCard(trip) {
         </div>
       </div>
 
+      ${window.voyafundraFeatures?.cardCountdown(trip) || ''}
+
       ${progressBar(progress)}
 
       <div class="progress-caption">
@@ -1009,8 +1011,10 @@ function renderTripDetails() {
     </section>
   `;
 
+  html += window.voyafundraFeatures?.renderInsights(trip) || "";
   html += renderTravelOptions(trip);
   html += renderSavingsTracker(trip);
+  html += window.voyafundraFeatures?.renderChecklist(trip) || "";
 
   html += `
     <section class="panel">
@@ -1718,6 +1722,7 @@ function tripForm(existing = null) {
       notes: data.notes.trim(),
       options: existing?.options || [],
       savings: existing?.savings || [],
+      checklist: existing?.checklist || [],
       createdAt: existing?.createdAt || new Date().toISOString(),
     };
 
@@ -1775,7 +1780,7 @@ function tripForm(existing = null) {
     }
 
     saveTrips(updated.id);
-    notify(existing ? "Trip updated." : "Trip created.");
+    notify("Trip change queued — wait for cloud confirmation.");
 
     return true;
   });
@@ -2048,7 +2053,7 @@ function savingsForm(existing = null) {
       }
 
       saveTrips(trip.id);
-      notify("Savings saved.");
+      notify("Savings change queued — wait for cloud confirmation.");
 
       return true;
     },
@@ -2079,7 +2084,7 @@ function changeTripStatus(trip) {
 
     currentView = data.status === "Completed" ? "history" : "all";
 
-    notify(`Trip status changed to ${trip.status}.`);
+    notify("Trip status change queued — wait for cloud confirmation.");
 
     return true;
   });
@@ -2244,6 +2249,15 @@ $("#modalLayer").addEventListener("pointercancel", () => {
    TRIP ACTION EVENT HANDLING
 ========================================== */
 
+// Trip cards need Enter/Space activation as well as pointer clicks.
+$("#appContent").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const card = event.target.closest('.trip-card[data-action="open"]');
+  if (!card || event.target !== card) return;
+  event.preventDefault();
+  card.click();
+});
+
 $("#appContent").addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
 
@@ -2255,7 +2269,16 @@ $("#appContent").addEventListener("click", (event) => {
 
   if (["new", "edit-trip", "change-status", "delete-trip", "add-option",
        "edit-option", "delete-option", "add-saving", "edit-saving",
-       "delete-saving"].includes(action) && !canStartTripEdit(trip?.id || null)) return;
+       "delete-saving", "checklist-starter", "checklist-add",
+       "checklist-edit", "checklist-toggle", "checklist-delete"].includes(action) &&
+      !canStartTripEdit(trip?.id || null)) return;
+
+  if (action.startsWith("checklist-")) {
+    if (trip) window.voyafundraFeatures?.handleChecklistAction(action, trip, id, {
+      field, showModal, saveTrips, notify, render, generateId, confirmRemove,
+    });
+    return;
+  }
 
   switch (action) {
     case "new":
