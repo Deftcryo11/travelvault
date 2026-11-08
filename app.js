@@ -32,6 +32,21 @@ let cloudWriteQueue = Promise.resolve();
 // Guard against refreshing or closing with pending/failed saves.
 let cloudWritesPending = 0;
 let cloudSaveError = null;
+// Last confirmed database version of each individual trip.
+let cloudTripVersions = new Map();
+// Server-generated integer revision provides an authoritative compare-and-swap.
+let cloudTripRevisions = new Map();
+// Failed changes remain visible until a successful retry of that trip.
+let cloudUnsavedTripIds = new Set();
+// Distinguishes successive saves for the same trip while writes are queued.
+let cloudTripSaveSequence = new Map();
+// Invalidates an in-flight refresh if a new local write is queued.
+let cloudWriteGeneration = 0;
+// Saved drafts are staged until the signed-in user explicitly reviews them.
+let cloudRecoveryPendingDrafts = [];
+let cloudRestoredDrafts = new Map();
+let cloudRecoveryStorageFaults = new Set();
+let cloudRecoveryReadError = null;
 
 /* ==========================================
    GENERAL HELPERS
@@ -153,7 +168,7 @@ async function loadCloudTrips(user) {
 
   const { data, error } = await supabaseClient
     .from("trips")
-    .select("id, trip_data")
+    .select("id, trip_data, updated_at, revision")
     .eq("user_id", user.id)
     .order("created_at", {
       ascending: false,
@@ -175,9 +190,29 @@ async function loadCloudTrips(user) {
       id: row.id,
     }));
 
+  cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
+  cloudTripRevisions = new Map((data || []).map((row) => [row.id, row.revision]));
+  cloudUnsavedTripIds.clear();
+  cloudTripSaveSequence.clear();
+  cloudRestoredDrafts.clear();
+  cloudRecoveryStorageFaults.clear();
+  cloudRecoveryPendingDrafts = [];
+  cloudRecoveryReadError = null;
+  try {
+    cloudRecoveryPendingDrafts = window.voyafundraDrafts?.list(user.id) || [];
+  } catch (draftError) {
+    cloudRecoveryReadError = draftError;
+  }
   cloudReady = true;
-  cloudSaveError = null;
-  window.voyafundraUX?.setStatus("saved", "Trips up to date");
+  cloudSaveError = cloudRecoveryReadError;
+  window.voyafundraUX?.setStatus(
+    cloudRecoveryReadError || cloudRecoveryPendingDrafts.length ? "error" : "saved",
+    cloudRecoveryReadError
+      ? "Recovery storage could not be read — do not clear site data"
+      : cloudRecoveryPendingDrafts.length
+        ? "Saved drafts found — review before editing"
+        : "Trips up to date"
+  );
 
   render();
 
@@ -189,35 +224,156 @@ async function loadCloudTrips(user) {
  * Read failures leave the dashboard intact; account transitions cancel refresh.
  * Call only when there are no pending or failed local writes.
  */
-async function refreshCloudTripsSafely(userId) {
+async function refreshCloudTripsSafely(userId, options = {}) {
+  // Failed edits are never discarded by normal Refresh. The recovery panel
+  // requires explicit confirmation to opt into discarding local changes.
+  const discardUnsaved = options.discardUnsaved === true;
   if (!cloudReady || !cloudUserId || cloudUserId !== userId ||
-      cloudWritesPending > 0 || cloudSaveError) {
-    throw new Error("Finish saving changes before refreshing.");
+      cloudWritesPending > 0 || cloudRecoveryPendingDrafts.length ||
+      cloudRecoveryReadError ||
+      (!discardUnsaved && (cloudSaveError || cloudUnsavedTripIds.size))) {
+    throw new Error("Finish or resolve unsaved changes before refreshing.");
   }
 
   const epoch = cloudEpoch;
+  const writeGeneration = cloudWriteGeneration;
   const { data, error } = await supabaseClient
     .from("trips")
-    .select("id, trip_data")
+    .select("id, trip_data, updated_at, revision")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(`Could not refresh trips: ${error.message}`);
-
   if (epoch !== cloudEpoch || cloudUserId !== userId || !cloudReady) {
     throw new Error("Your account session changed during refresh.");
   }
-
-  if (cloudWritesPending > 0 || cloudSaveError) {
+  if (cloudWritesPending > 0 || writeGeneration !== cloudWriteGeneration ||
+      (!discardUnsaved && (cloudSaveError || cloudUnsavedTripIds.size))) {
     throw new Error("Trips changed while refreshing. Try again after saving.");
   }
 
+  // If storage cleanup fails, keep the current local recovery copy intact.
+  if (discardUnsaved && window.voyafundraDrafts) {
+    for (const id of cloudUnsavedTripIds) {
+      window.voyafundraDrafts.forget(userId, id);
+    }
+  }
+  // Nothing in local memory is replaced unless the server read succeeded.
   trips = (data || [])
     .filter((row) => row.trip_data && typeof row.trip_data === "object")
     .map((row) => ({ ...row.trip_data, id: row.id }));
+  cloudTripVersions = new Map((data || []).map((row) => [row.id, row.updated_at]));
+  cloudTripRevisions = new Map((data || []).map((row) => [row.id, row.revision]));
+
+  if (discardUnsaved) {
+    // The user reviewed the warning and explicitly discarded a *test* edit.
+    // Reset the old rejected queue only when all writes have finished.
+    cloudSaveError = null;
+    cloudUnsavedTripIds.clear();
+    cloudTripSaveSequence.clear();
+    cloudRestoredDrafts.clear();
+    cloudRecoveryStorageFaults.clear();
+    cloudWriteQueue = Promise.resolve();
+  }
   selectedTripId = null;
   currentView = "all";
   render();
+  window.voyafundraUX?.setStatus("saved", "Trips refreshed from the cloud");
+  return true;
+}
+
+/**
+ * A private, on-demand export of unsaved local snapshots. Does not write
+ * the snapshots to browser storage or send them to any external service.
+ */
+function getCloudRecoverySnapshot() {
+  const unsaved = Array.from(cloudUnsavedTripIds).map((id) => {
+    const trip = trips.find((item) => item.id === id);
+    return trip
+      ? { action: "save", trip: JSON.parse(JSON.stringify(trip)) }
+      : { action: "delete", trip_id: id };
+  });
+  return {
+    format: "voyafundra-unsaved-drafts-v1",
+    created_at: new Date().toISOString(),
+    error: cloudSaveError?.message || null,
+    unsaved,
+  };
+}
+
+
+
+/**
+ * Explicit local restoration only. Nothing is written to Supabase here.
+ * Reuse the ORIGINAL cloud version token so stale drafts cannot silently
+ * overwrite newer cloud data when they are eventually resolved.
+ */
+function restoreSavedDraftsForReview() {
+  if (!cloudReady || !cloudUserId || cloudWritesPending ||
+      cloudRecoveryReadError) {
+    throw new Error("Finish loading and saving before restoring drafts.");
+  }
+  const saved = window.voyafundraDrafts?.list(cloudUserId) || [];
+  if (!saved.length) {
+    cloudRecoveryPendingDrafts = [];
+    return 0;
+  }
+  for (const draft of saved) {
+    if (draft.action !== "save" || !draft.trip || draft.trip.id !== draft.tripId) {
+      // Never replay deletion intentions automatically.
+      continue;
+    }
+    const local = JSON.parse(JSON.stringify(draft.trip));
+    const idx = trips.findIndex((item) => item.id === draft.tripId);
+    if (idx >= 0) trips[idx] = local;
+    else trips.unshift(local);
+    if (draft.baseVersion) cloudTripVersions.set(draft.tripId, draft.baseVersion);
+    else cloudTripVersions.delete(draft.tripId);
+    cloudRestoredDrafts.set(draft.tripId, { baseVersion: draft.baseVersion });
+    cloudUnsavedTripIds.add(draft.tripId);
+    cloudTripSaveSequence.set(draft.tripId, 1);
+  }
+  cloudRecoveryPendingDrafts = [];
+  if (cloudUnsavedTripIds.size) {
+    cloudSaveError = new Error("Recovered drafts require review before saving.");
+    window.voyafundraUX?.setStatus("error", "Recovered local edits — compare with cloud");
+  }
+  render();
+  return cloudUnsavedTripIds.size;
+}
+
+/** Discard staged recovery drafts without modifying any cloud trip. */
+function discardSavedDrafts() {
+  if (!cloudReady || !cloudUserId || cloudWritesPending) {
+    throw new Error("Finish loading and saving first.");
+  }
+  const saved = window.voyafundraDrafts?.list(cloudUserId) || [];
+  for (const draft of saved) {
+    window.voyafundraDrafts.forget(cloudUserId, draft.tripId, draft.token);
+  }
+  cloudRecoveryPendingDrafts = [];
+  cloudRecoveryReadError = null;
+  if (cloudUnsavedTripIds.size === 0) cloudSaveError = null;
+  window.voyafundraUX?.setStatus("saved", "Stored drafts discarded by request");
+  return saved.length;
+}
+
+/** No trip mutation can replace an unreviewed, older local recovery copy. */
+function canStartTripEdit(tripId = null) {
+  if (window.voyafundraBackup?.isBusy?.()) {
+    notify("Finish the backup restore before editing trips.");
+    return false;
+  }
+  if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
+    notify("Please review saved recovery drafts before editing.");
+    window.voyafundraUX?.showDrafts?.();
+    return false;
+  }
+  if (tripId && cloudRestoredDrafts.has(tripId)) {
+    notify("Compare and resolve this recovered trip before editing it.");
+    window.voyafundraUX?.showRecovery?.();
+    return false;
+  }
   return true;
 }
 
@@ -233,6 +389,14 @@ function clearCloudTrips() {
   cloudUserId = null;
   cloudReady = false;
   cloudSaveError = null;
+  cloudTripVersions.clear();
+  cloudTripRevisions.clear();
+  cloudUnsavedTripIds.clear();
+  cloudTripSaveSequence.clear();
+  cloudRestoredDrafts.clear();
+  cloudRecoveryPendingDrafts = [];
+  cloudRecoveryStorageFaults.clear();
+  cloudRecoveryReadError = null;
   window.voyafundraUX?.setStatus("loading", "Sign in to sync trips");
 
   trips = [];
@@ -243,123 +407,166 @@ function clearCloudTrips() {
 }
 
 /**
- * Save the complete current trip collection.
+ * Persist exactly one edited trip or explicit deletion. This must never
+ * infer deletions from the device's cached list of trip IDs.
  *
- * Saves are queued to prevent an older save from
- * finishing after a newer one.
- *
- * Each trip is stored as an individual database row.
+ * Existing records use the database-managed integer revision for atomic
+ * compare-and-swap. Another device's write increments the server revision,
+ * so a stale edit or deletion matches zero rows.
  */
-function saveTrips() {
-  if (!cloudReady || !cloudUserId) {
+function saveTrips(tripId, options = {}) {
+  if (!cloudReady || !cloudUserId || !tripId) {
     notify("Sign in before saving changes.");
     return false;
   }
+  if (window.voyafundraBackup?.isBusy?.()) {
+    notify("Finish restoring the backup before editing trips.");
+    return false;
+  }
+  if (cloudRecoveryPendingDrafts.length || cloudRecoveryReadError) {
+    notify("Review saved recovery drafts before changing trips.");
+    window.voyafundraUX?.showDrafts?.();
+    return false;
+  }
 
+  const deleting = options.deleteTrip === true;
+  const trip = trips.find((item) => item.id === tripId);
+  if (!deleting && !trip) {
+    notify("Cannot save a trip that is no longer available.");
+    return false;
+  }
+  const snapshot = deleting ? null : JSON.parse(JSON.stringify(trip));
   const userId = cloudUserId;
   const epoch = cloudEpoch;
-
-  // Capture an independent copy at save time.
-  const snapshot = JSON.parse(JSON.stringify(trips));
-  cloudWritesPending += 1;
-  window.voyafundraUX?.setStatus("saving", "Saving trips...");
-
-  cloudWriteQueue = cloudWriteQueue
-    .catch(() => {
-      // A previous failed save must not block
-      // subsequent attempts.
-    })
-    .then(async () => {
-      if (epoch !== cloudEpoch || userId !== cloudUserId) {
-        return;
-      }
-
-      // Read existing database trip IDs.
-      const { data: existing, error: readError } = await supabaseClient
-        .from("trips")
-        .select("id")
-        .eq("user_id", userId);
-
-      if (readError) {
-        throw readError;
-      }
-
-      if (epoch !== cloudEpoch || userId !== cloudUserId) {
-        return;
-      }
-
-      // Create or update current trips.
-      if (snapshot.length > 0) {
-        const rows = snapshot.map((trip) => ({
-          id: trip.id,
-          user_id: userId,
-          trip_data: trip,
-          updated_at: new Date().toISOString(),
-        }));
-
-        const { error: writeError } = await supabaseClient
-          .from("trips")
-          .upsert(rows, {
-            onConflict: "user_id,id",
-          });
-
-        if (writeError) {
-          throw writeError;
-        }
-      }
-
-      if (epoch !== cloudEpoch || userId !== cloudUserId) {
-        return;
-      }
-
-      // Remove trips deleted from the dashboard.
-      const currentIds = new Set(snapshot.map((trip) => trip.id));
-
-      const deletedIds = (existing || [])
-        .map((row) => row.id)
-        .filter((id) => !currentIds.has(id));
-
-      if (deletedIds.length > 0) {
-        const { error: deleteError } = await supabaseClient
-          .from("trips")
-          .delete()
-          .eq("user_id", userId)
-          .in("id", deletedIds);
-
-        if (deleteError) {
-          throw deleteError;
-        }
-      }
-
-      // Only report success for the current account.
-      if (epoch === cloudEpoch && userId === cloudUserId) {
-        cloudSaveError = null;
-        window.voyafundraUX?.setStatus("saved", "All changes saved");
-        console.log("Voyafundra: Trips synchronized with Supabase.");
-      }
-    });
-
-  // Report cloud failures instead of treating them
-  // as successful saves.
-  cloudWriteQueue.catch((error) => {
-    if (epoch === cloudEpoch && userId === cloudUserId) {
-      cloudSaveError = error;
-      console.error("Voyafundra cloud save failed:", error);
-      window.voyafundraUX?.setStatus("error", "Save failed — changes not confirmed");
-      notify(
-        "Cloud save failed. Keep this tab open and retry saving before refreshing.",
+  // Journal a snapshot synchronously before starting the network request.
+  // If browser storage fails, keep the unsaved warning and prevent unsafe
+  // automatic logout, rather than claiming we have a recoverable draft.
+  let draftToken = null;
+  if (!deleting && window.voyafundraDrafts) {
+    try {
+      draftToken = window.voyafundraDrafts.record(
+        userId, tripId, "save", snapshot, cloudTripVersions.get(tripId) ?? null
       );
+      cloudRecoveryStorageFaults.delete(tripId);
+    } catch (draftError) {
+      cloudRecoveryStorageFaults.add(tripId);
+      notify("Local recovery failed: " + draftError.message +
+        " Keep this app open until the cloud save is confirmed.");
     }
+  } else if (!deleting) {
+    cloudRecoveryStorageFaults.add(tripId);
+    notify("Local recovery is unavailable. Keep this app open until saved.");
+  }
+  cloudWritesPending += 1;
+  cloudWriteGeneration += 1;
+  cloudUnsavedTripIds.add(tripId);
+  const saveSequence = (cloudTripSaveSequence.get(tripId) || 0) + 1;
+  cloudTripSaveSequence.set(tripId, saveSequence);
+  window.voyafundraUX?.setStatus("saving", "Saving trip changes...");
+
+  // Each operation runs after earlier operations, and reads the confirmed
+  // version only when its own turn begins.
+  const write = cloudWriteQueue.catch(() => {}).then(async () => {
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
+
+    const previous = cloudTripVersions.get(tripId);
+    const previousRevision = cloudTripRevisions.get(tripId);
+    let newVersion;
+    let newRevision;
+
+    if (deleting) {
+      if (!previous || !Number.isSafeInteger(previousRevision)) {
+        throw new Error("Trip revision is missing. Refresh before deleting.");
+      }
+      const { data, error } = await supabaseClient.from("trips")
+        .delete()
+        .eq("user_id", userId)
+        .eq("id", tripId)
+        .eq("revision", previousRevision)
+        .select("id");
+      if (error) throw error;
+      if (!data || data.length !== 1) {
+        throw new Error("Deletion blocked: this trip changed on another device.");
+      }
+    } else if (previous) {
+      // A guaranteed later timestamp ensures consecutive writes from this
+      // device do not retain an identical comparison token.
+      if (!Number.isSafeInteger(previousRevision)) {
+        throw new Error("Trip revision is missing. Refresh before saving.");
+      }
+      const { data, error } = await supabaseClient.from("trips")
+        .update({ trip_data: snapshot })
+        .eq("user_id", userId)
+        .eq("id", tripId)
+        .eq("revision", previousRevision)
+        .select("updated_at, revision");
+      if (error) throw error;
+      if (!data || data.length !== 1) {
+        throw new Error("Save blocked: this trip changed on another device.");
+      }
+      newVersion = data[0].updated_at;
+      newRevision = data[0].revision;
+    } else {
+      // INSERT rather than UPSERT: a concurrent new record cannot be
+      // silently overwritten if the same ID already exists.
+      const { data, error } = await supabaseClient.from("trips")
+        .insert({ id: tripId, user_id: userId, trip_data: snapshot })
+        .select("updated_at, revision");
+      if (error) throw error;
+      if (!data || data.length !== 1) {
+        throw new Error("Could not confirm the new trip was created.");
+      }
+      newVersion = data[0].updated_at;
+      newRevision = data[0].revision;
+    }
+
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return false;
+    if (deleting) {
+      cloudTripVersions.delete(tripId);
+      cloudTripRevisions.delete(tripId);
+    } else {
+      cloudTripVersions.set(tripId, newVersion);
+      cloudTripRevisions.set(tripId, newRevision);
+    }
+    // Earlier queued writes cannot clear the unsaved marker for a newer
+    // snapshot of the same trip that has not yet been confirmed.
+    if (cloudTripSaveSequence.get(tripId) === saveSequence) {
+      // Older queued saves must not erase newer recovery snapshots.
+      if (draftToken && window.voyafundraDrafts) {
+        try {
+          window.voyafundraDrafts.forget(userId, tripId, draftToken);
+        } catch (journalError) {
+          console.warn("Could not clear a confirmed draft:", journalError);
+        }
+      }
+      cloudUnsavedTripIds.delete(tripId);
+      cloudTripSaveSequence.delete(tripId);
+      cloudRestoredDrafts.delete(tripId);
+      cloudRecoveryStorageFaults.delete(tripId);
+    }
+    if (cloudUnsavedTripIds.size === 0) cloudSaveError = null;
+    console.log("Voyafundra: Trip change confirmed by Supabase.");
+    return true;
+  });
+
+  cloudWriteQueue = write;
+  // Report failures, retaining local data and the unsaved-trip marker.
+  void write.catch((error) => {
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
+    cloudSaveError = error;
+    console.error("Voyafundra cloud save failed:", error);
+    window.voyafundraUX?.setStatus("error", "Save not confirmed — keep app open");
+    notify((error.message || "Cloud save failed.") +
+      " Keep this app open and retry the trip edit.");
   }).finally(() => {
+    if (epoch !== cloudEpoch || userId !== cloudUserId) return;
     cloudWritesPending = Math.max(0, cloudWritesPending - 1);
-    // A newer save can still be running; do not hide its pending state.
-    if (epoch === cloudEpoch && userId === cloudUserId &&
-        cloudWritesPending === 0 && !cloudSaveError) {
+    if (cloudWritesPending === 0 && !cloudSaveError &&
+        cloudUnsavedTripIds.size === 0) {
       window.voyafundraUX?.setStatus("saved", "All changes saved");
     }
   });
-
-  return true;
+  return write;
 }
 
 /**
@@ -557,6 +764,8 @@ function tripCard(trip) {
           </strong>
         </div>
       </div>
+
+      ${window.voyafundraFeatures?.cardCountdown(trip) || ''}
 
       ${progressBar(progress)}
 
@@ -808,8 +1017,10 @@ function renderTripDetails() {
     </section>
   `;
 
+  html += window.voyafundraFeatures?.renderInsights(trip) || "";
   html += renderTravelOptions(trip);
   html += renderSavingsTracker(trip);
+  html += window.voyafundraFeatures?.renderChecklist(trip) || "";
 
   html += `
     <section class="panel">
@@ -1281,7 +1492,13 @@ function showModal(title, body, onSubmit) {
 
   $("#modalLayer").classList.remove("hidden");
 
+  // Both the × button and Cancel must close every type of trip form.
   $("#cancelModal").onclick = closeModal;
+  $("#modalClose").onclick = closeModal;
+
+  // Replace only date/month inputs with Voyafundra-themed calendars.
+  // Their original names/ISO values remain available to FormData.
+  window.voyafundraCalendar?.mount($("#activeForm"));
 
   $("#activeForm").onsubmit = (event) => {
     event.preventDefault();
@@ -1300,6 +1517,7 @@ function showModal(title, body, onSubmit) {
 }
 
 function closeModal() {
+  window.voyafundraCalendar?.closeAll();
   $("#modalLayer").classList.add("hidden");
   $("#modalBody").innerHTML = "";
 }
@@ -1510,6 +1728,7 @@ function tripForm(existing = null) {
       notes: data.notes.trim(),
       options: existing?.options || [],
       savings: existing?.savings || [],
+      checklist: existing?.checklist || [],
       createdAt: existing?.createdAt || new Date().toISOString(),
     };
 
@@ -1566,8 +1785,8 @@ function tripForm(existing = null) {
       selectedTripId = updated.id;
     }
 
-    saveTrips();
-    notify(existing ? "Trip updated." : "Trip created.");
+    saveTrips(updated.id);
+    notify("Trip change queued — wait for cloud confirmation.");
 
     return true;
   });
@@ -1766,8 +1985,8 @@ function travelOptionForm(existing = null) {
         trip.options.push(updated);
       }
 
-      saveTrips();
-      notify("Travel option saved.");
+      saveTrips(trip.id);
+      notify("Travel option queued — wait for cloud confirmation.");
 
       return true;
     },
@@ -1839,8 +2058,8 @@ function savingsForm(existing = null) {
         trip.savings.push(updated);
       }
 
-      saveTrips();
-      notify("Savings saved.");
+      saveTrips(trip.id);
+      notify("Savings change queued — wait for cloud confirmation.");
 
       return true;
     },
@@ -1864,14 +2083,14 @@ function changeTripStatus(trip) {
   showModal("Change trip status", body, (data) => {
     trip.status = data.status;
 
-    saveTrips();
+    saveTrips(trip.id);
 
     // Return to the appropriate trip list.
     selectedTripId = null;
 
     currentView = data.status === "Completed" ? "history" : "all";
 
-    notify(`Trip status changed to ${trip.status}.`);
+    notify("Trip status change queued — wait for cloud confirmation.");
 
     return true;
   });
@@ -1881,15 +2100,30 @@ function changeTripStatus(trip) {
    DELETE CONFIRMATION
 ========================================== */
 
-function confirmRemove(message, callback) {
+function confirmRemove(message, callback, tripId, options = {}) {
   if (!window.confirm(message)) return;
 
+  if (options.deleteTrip) {
+    // Keep the complete trip on screen until Supabase confirms the delete.
+    // If a newer version exists on another device, leave this copy intact.
+    const pending = saveTrips(tripId, { deleteTrip: true });
+    if (!pending) return;
+    notify("Deleting trip from the cloud...");
+    void pending.then((confirmed) => {
+      if (!confirmed) return;
+      callback();
+      render();
+      notify("Trip deleted.");
+    }).catch(() => {
+      notify("Deletion not confirmed. Your trip is still available.");
+    });
+    return;
+  }
+
   callback();
-
-  saveTrips();
+  saveTrips(tripId);
   render();
-
-  notify("Deleted.");
+  notify("Change recorded; synchronizing...");
 }
 
 /* ==========================================
@@ -1970,7 +2204,7 @@ function initializeTheme() {
 ========================================== */
 
 $("#newTripBtn").addEventListener("click", () => {
-  tripForm();
+  if (canStartTripEdit()) tripForm();
 });
 
 $("#allTripsNav").addEventListener("click", () => {
@@ -2021,6 +2255,15 @@ $("#modalLayer").addEventListener("pointercancel", () => {
    TRIP ACTION EVENT HANDLING
 ========================================== */
 
+// Trip cards need Enter/Space activation as well as pointer clicks.
+$("#appContent").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const card = event.target.closest('.trip-card[data-action="open"]');
+  if (!card || event.target !== card) return;
+  event.preventDefault();
+  card.click();
+});
+
 $("#appContent").addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
 
@@ -2029,6 +2272,19 @@ $("#appContent").addEventListener("click", (event) => {
   const action = button.dataset.action;
   const id = button.dataset.id;
   const trip = getSelectedTrip();
+
+  if (["new", "edit-trip", "change-status", "delete-trip", "add-option",
+       "edit-option", "delete-option", "add-saving", "edit-saving",
+       "delete-saving", "checklist-starter", "checklist-add",
+       "checklist-edit", "checklist-toggle", "checklist-delete"].includes(action) &&
+      !canStartTripEdit(trip?.id || null)) return;
+
+  if (action.startsWith("checklist-")) {
+    if (trip) window.voyafundraFeatures?.handleChecklistAction(action, trip, id, {
+      field, showModal, saveTrips, notify, render, generateId, confirmRemove,
+    });
+    return;
+  }
 
   switch (action) {
     case "new":
@@ -2064,6 +2320,8 @@ $("#appContent").addEventListener("click", (event) => {
 
           selectedTripId = null;
         },
+        trip.id,
+        { deleteTrip: true },
       );
       break;
 
@@ -2082,7 +2340,7 @@ $("#appContent").addEventListener("click", (event) => {
 
       confirmRemove("Delete this travel option?", () => {
         trip.options = trip.options.filter((option) => option.id !== id);
-      });
+      }, trip.id);
       break;
 
     case "add-saving":
@@ -2100,7 +2358,7 @@ $("#appContent").addEventListener("click", (event) => {
 
       confirmRemove("Delete this monthly savings entry?", () => {
         trip.savings = trip.savings.filter((row) => row.id !== id);
-      });
+      }, trip.id);
       break;
   }
 });

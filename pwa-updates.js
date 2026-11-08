@@ -18,6 +18,9 @@
   const FILES = [
     "index.html", "app.js", "auth.js", "styles.css",
     "mobile.css", "mobile.js", "experience.css", "experience.js",
+    "trip-calendar.js", "trip-calendar.css", "conflict-recovery.js",
+    "recovery-drafts.js", "trip-insights.js", "trip-features.js",
+    "trip-features.css", "trip-backup.js",
     "pwa-updates.js", "manifest.webmanifest"
   ];
   const CHECK_INTERVAL_MS = 120000;
@@ -74,6 +77,18 @@
       }
       if (typeof cloudWritesPending !== "undefined" && cloudWritesPending > 0) {
         return "Trip changes are still saving. Try again when all changes are saved.";
+      }
+      if (typeof cloudUnsavedTripIds !== "undefined" &&
+          cloudUnsavedTripIds.size > 0) {
+        return "Unconfirmed trip edits must be resolved before updating.";
+      }
+      if (typeof cloudRecoveryPendingDrafts !== "undefined" &&
+          cloudRecoveryPendingDrafts.length > 0) {
+        return "Review saved recovery drafts before updating.";
+      }
+      if (typeof cloudRecoveryReadError !== "undefined" &&
+          cloudRecoveryReadError) {
+        return "Recovery storage must be checked before updating.";
       }
     }
     const modal = document.getElementById("modalLayer");

@@ -334,59 +334,78 @@ function startIdleTracking(userId) {
 ========================================== */
 
 async function logoutUser(isAutomatic = false) {
-  if (logoutInProgress) {
-    return;
-  }
-
+  if (logoutInProgress) return;
   logoutInProgress = true;
   stopIdleTimer();
-
   logoutBtn.disabled = true;
 
   const userId = activeUserId;
-
   try {
-    // Finish pending trip saves before logout.
-    await waitForCloudSaves();
+    // A submitted edit can still fail after its promise settles. Never
+    // equate "the queue is empty" with "everything reached Supabase".
+    try {
+      await waitForCloudSaves();
+    } catch (saveError) {
+      console.warn("Sign-out check found a failed cloud write:", saveError);
+    }
+
+    if (cloudWritesPending > 0 || window.voyafundraBackup?.isBusy?.()) {
+      throw new Error("Wait for the backup restore or current saves to finish.");
+    }
+    const openEditor = !document.getElementById("modalLayer")
+      ?.classList.contains("hidden");
+    if (openEditor) {
+      throw new Error("Close or save the open form before signing out.");
+    }
+
+    const unconfirmed = !!cloudSaveError || cloudUnsavedTripIds.size > 0 ||
+      cloudRecoveryPendingDrafts.length > 0 || !!cloudRecoveryReadError;
+    if (unconfirmed) {
+      if (!isAutomatic) {
+        window.voyafundraUX?.showRecovery?.();
+        window.voyafundraUX?.showDrafts?.();
+        throw new Error(
+          "Some trip changes have not been confirmed by Supabase. " +
+          "Review the saved drafts or conflicts before logging out."
+        );
+      }
+
+      // Privacy: automatic sign-out may proceed after inactivity ONLY when
+      // all in-memory unsaved edits have verified persistent recovery copies.
+      // Restored-but-unreviewed drafts stay stored for the next login.
+      const stored = !!window.voyafundraDrafts &&
+        window.voyafundraDrafts.covers(userId,
+          Array.from(cloudUnsavedTripIds));
+      if (!stored || cloudRecoveryStorageFaults.size > 0 ||
+          cloudRecoveryReadError) {
+        throw new Error(
+          "Session expiration delayed: unconfirmed edits have no verified local backup."
+        );
+      }
+    }
 
     const { error } = await supabaseClient.auth.signOut();
-
-    if (error) {
-      throw error;
-    }
-
+    if (error) throw error;
     clearLastActivity(userId);
-
     if (isAutomatic) {
-      console.log("TravelVault: Logged out after 30 minutes of inactivity.");
+      console.log("Voyafundra: Session closed after inactivity.");
     }
-
-    // The Supabase auth listener will clear
-    // the dashboard and show the login page.
+    // Session listener clears only in-memory trip data. Stored recovery
+    // drafts are scoped to this account and remain available at next login.
   } catch (error) {
-    console.error("Logout failed:", error);
-
+    console.error("Logout paused:", error);
     if (isAutomatic) {
-      showAuthMessage(
-        "Your session timed out, but logout failed. " +
-          "Please check your connection.",
-        "error",
-      );
-
-      // Keep the app hidden until logout succeeds.
-      showAuthLoading("Session expired. Checking logout...");
-
-      setTimeout(() => {
-        logoutInProgress = false;
-        void logoutUser(true);
-      }, 10000);
-
-      return;
+      // Keep the local copy available when browser storage is unavailable.
+      // Retry the idle check in one minute instead of looping immediately.
+      showAuthMessage(error.message +
+        " Keep this browser tab open and secure the changes.", "error");
+      window.voyafundraUX?.setStatus("error",
+        "Automatic sign-out paused: unresolved edits need protection");
+      idleTimer = setTimeout(() => void checkIdleTimeout(), 60 * 1000);
+    } else {
+      window.alert("Could not log out safely: " + error.message);
+      scheduleIdleCheck();
     }
-
-    window.alert(`Could not log out safely: ${error.message}`);
-
-    scheduleIdleCheck();
   } finally {
     logoutBtn.disabled = false;
     logoutInProgress = false;

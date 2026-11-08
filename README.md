@@ -1,43 +1,69 @@
-# TravelVault
-A free, local-first travel budget and savings tracker built with plain HTML, CSS and JavaScript. No npm, accounts, or paid services required.
+# Voyafundra
 
-## Run it
-1. Download and unzip `TravelVault.zip`.
-2. Open the `travelvault` folder in VS Code.
-3. Open `index.html` in a browser, or use the VS Code **Live Server** extension and select **Open with Live Server**.
-4. Click **New trip**, add your trip budget and dates, and then enter travel options and monthly savings.
+Voyafundra is a responsive travel budget, savings and checklist planner. The frontend uses plain HTML, CSS and JavaScript. Supabase provides authentication and per-user trip storage; Vercel hosts the site.
 
 ## Features
-- Many separate trips with Planning, Upcoming, and Completed statuses; a dedicated history view
-- Per-option ticket prices in MVR, USD purchased at the bank, manual MVR-per-USD exchange rates, accommodation and other expenses
-- Trip cost = ticket MVR + (USD purchased × MVR/USD rate) + stay MVR + other MVR
-- Budget left after a travel option = trip budget − option total
-- Any number of savers per trip; each saver has a separate monthly target and actual contributions, with live progress bars
-- During trip creation, choose the first saving month and number of months (0–60), and TravelVault automatically creates the monthly target rows
-- Destination search suggestions for real city names via the free Open-Meteo geocoding service (internet required for suggestions; manual entry still works)
-- Edit/delete trips, travel options and savings entries
-- Data persists in **this browser** using localStorage and survives page reloads/browser restarts (unless cleared)
-- JSON backup export and import (import **replaces** local data after confirmation)
-- Mobile-friendly responsive layout; all user-entered display text is HTML-escaped
 
-## Example matching the spreadsheet
-Create a trip with budget **34,000 MVR** and two savers W and H. For option FlyDubai, add ticket **8,018.40**, USD purchased **1,000**, rate **15.42**, stay **5,026.92**. Total = **28,465.32 MVR**, budget left = **5,534.68 MVR**. Add October savings W **7,000** and H **4,000**. Total saved = **11,000 MVR** and savings progress = **32.35%**.
+- Separate trips with Planning, Upcoming and Completed status and a history view.
+- A multi-person savings tracker with monthly targets and recorded contributions.
+- Savings insights: monthly amount needed before departure, recent planned-versus-saved progress, and travel budget comparison.
+- Travel options: ticket price in MVR, USD purchased at a manually entered bank rate, stay and extras.
+- Countdown to each trip's departure date, using the device's calendar date.
+- Editable per-trip travel checklists with completion state and optional due dates.
+- Theme-aware date/month pickers, device theme support and responsive iPhone PWA layout.
+- Full-account JSON backup export and a preview-based, create-only restore for missing trips.
+- Independent trip saves, server-managed revision checks, unsaved-edit review and local recovery drafts.
 
-## Updating from the earlier version
-- Export a JSON backup from your previous version before replacing the files.
-- Extract the ZIP and replace the old project files, then open using the same Live Server address/browser origin to access existing localStorage data.
-- Existing two-person W/H savings are automatically interpreted in the new multi-saver table. You do not need to delete older trips.
-- New trips automatically generate their monthly planned rows; editing an existing trip does not automatically overwrite past monthly rows. Add additional months as needed.
+## Getting started
 
-## Important limitations
-- Browser storage is specific to the browser/device/origin. Clearing site data, using private mode, or changing browsers may lose data. **Export backups regularly.**
-- This is a local-first version with **no cloud account or syncing**. Save your JSON backups somewhere safe.
-- Real city suggestions require internet connectivity; the geocoding lookup can be unavailable, so manual destinations remain possible.
-- Exchange rates are entered by you, not fetched from a bank or live market.
-- Monetary calculations use normal JavaScript floating-point numbers and are rounded to two decimals for display; suitable for personal planning, not financial accounting.
-- Trip history keeps *the latest state* of each completed trip, not a dated audit log of all edits.
+1. Open the deployed Voyafundra site and sign up or log in.
+2. Select New Trip. Set a destination, travel dates, budget, savers and savings schedule.
+3. Save and wait for the cloud indicator to confirm all changes have been saved.
+4. Open a trip to compare flight costs, track savings, review budget insights and manage the travel checklist.
+5. Use Data backup & restore to download a private copy of all saved trips or restore missing ones from your own account's backup.
+6. Find completed trips under Completed Trips.
 
-## Project files
-- `index.html` – interface shell
-- `styles.css` – styling and responsive layouts
-- `app.js` – application logic, calculations and persistence
+## Financial definitions
+
+All budgets and savings are displayed in MVR.
+
+Estimated travel option cost = ticket MVR + USD purchased × MVR/USD exchange rate + accommodation MVR + extras MVR.
+
+Travel options are alternatives, not cumulative expenses. They are also not treated as spending that has already occurred.
+
+The monthly amount needed is remaining savings divided by the number of calendar months from the current month through the departure month (inclusive). This is a planning estimate, not a guarantee that the target will be met.
+
+## Cloud synchronization and security
+
+The public.trips table stores one JSON trip per user/id, with user ownership enforced by Supabase RLS. The server increments a numeric revision on every insert/update. The current app checks that revision before changing or deleting an existing trip; a stale revision is rejected.
+
+Unconfirmed edits can be reviewed before refreshing, and an emergency draft is attempted in account-scoped browser storage before each trip save. Browser storage is NOT encrypted or a substitute for a private JSON backup. Keep recovery and full backup files private. Old browser tabs running earlier whole-list writers should be closed/refreshed before editing the same trips as the new version.
+
+Import restores only absent trip IDs after confirming the same account and a preview. Existing trip IDs are never overwritten by the import feature.
+
+## Development and testing
+
+This is a static JavaScript app with no build step. Node.js 22 or newer is recommended for the tests. In a shell from the project root, run:
+
+    for file in *.js; do node --check "$file"; done
+    node --test tests/*.test.cjs
+
+On Windows PowerShell, run the checks using a PowerShell-compatible loop:
+
+    Get-ChildItem -Filter *.js | ForEach-Object { node --check $_.FullName }
+    node --test tests/*.test.cjs
+
+Changes are developed and tested on the beta-testing branch. GitHub Actions runs syntax checks and automated regression tests for cloud saves, recovery, savings, checklists and backup validation. Desktop and iPhone UI testing remains an important manual release check.
+
+Vercel hosts deployments and Supabase handles authenticated data. Use disposable test trips for destructive testing when beta and production share the database.
+
+## Current limitations
+
+- No automatic exchange-rate feed or direct banking integration.
+- No fully supported offline synchronization.
+- No automatic field-by-field merge of simultaneous trip changes.
+- Recovery drafts on a device are not synchronized across devices.
+- Full-backup restore only inserts missing trips and does not replace existing trips.
+- A backup belongs to the account from which it was exported.
+
+More detail is in docs/data-protection-foundation.md and docs/trip-revisions.md.

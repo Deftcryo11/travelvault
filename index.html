@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="mobile.css" />
     <link rel="stylesheet" href="experience.css" />
+    <link rel="stylesheet" href="trip-calendar.css" />
+    <link rel="stylesheet" href="trip-features.css" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -37,12 +39,18 @@
     <script defer src="supabase-conf.js"></script>
 
     <!-- Voyafundra Application -->
+    <script defer src="trip-calendar.js"></script>
+    <script defer src="trip-insights.js"></script>
+    <script defer src="trip-features.js"></script>
     <script defer src="app.js"></script>
 
     <!-- User Authentication -->
+    <script defer src="recovery-drafts.js"></script>
     <script defer src="auth.js"></script>
     <script defer src="mobile.js"></script>
+    <script defer src="conflict-recovery.js"></script>
     <script defer src="experience.js"></script>
+    <script defer src="trip-backup.js"></script>
     <script defer src="pwa-updates.js"></script>
   </head>
 
@@ -228,6 +236,7 @@
             <span id="cloudStatusText">Checking cloud connection...</span>
           </div>
           <div class="cloud-toolbar-actions">
+            <button class="btn btn-outline" type="button" id="reviewCloudIssueBtn" hidden>Review unsaved</button>
             <button class="btn btn-outline cloud-refresh" id="refreshTripsBtn" type="button">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M20 11a8 8 0 1 0-2.2 5.6"/><path d="M20 4v7h-7"/>
@@ -236,6 +245,78 @@
             </button>
           </div>
         </section>
+        <section class="saved-drafts-banner" id="savedDraftsBanner" aria-label="Saved trip recovery" hidden>
+          <h2>Unsaved trip drafts found on this device</h2>
+          <p id="savedDraftsDetails"></p>
+          <p>These are local copies from a previous interrupted session. They have NOT been sent back to the cloud. Restoring them only stages them for comparison; nothing is overwritten automatically.</p>
+          <p>Local recovery copies are stored in this browser and are not encrypted. Keep this device private and download a backup before discarding any data.</p>
+          <div class="saved-drafts-actions">
+            <button type="button" class="btn btn-primary" id="restoreSavedDraftsBtn">Restore for review</button>
+            <button type="button" class="btn btn-outline" id="downloadSavedDraftsBtn">Download backup</button>
+          </div>
+          <label class="cloud-recovery-confirm">
+            <input type="checkbox" id="acknowledgeSavedDraftDiscard">
+            I have downloaded a backup, or these are disposable test drafts.
+          </label>
+          <button type="button" class="btn btn-outline" id="discardSavedDraftsBtn">Discard stored drafts</button>
+          <p id="savedDraftsMessage" role="status" aria-live="polite"></p>
+        </section>
+        <section class="cloud-recovery-panel" id="cloudRecoveryPanel" aria-labelledby="cloudRecoveryTitle" hidden>
+          <h2 id="cloudRecoveryTitle">Review unsaved trip changes</h2>
+          <p id="cloudRecoveryDetails"></p>
+          <p>These unconfirmed edits are currently on this device, with recovery copies stored locally when the browser permits. Download a backup before discarding changes. Keep your backup private.</p>
+          <div class="cloud-recovery-actions">
+            <button class="btn btn-outline" type="button" id="downloadRecoveryBackupBtn">Download unsaved backup</button>
+            <button class="btn btn-outline" type="button" id="closeCloudRecoveryBtn">Keep my edits</button>
+          </div>
+          <div class="cloud-conflict-review" id="cloudConflictReview">
+            <h3>Compare this device with the cloud</h3>
+            <p>Review one unsaved trip at a time. Nothing is overwritten just by comparing.</p>
+            <div class="cloud-conflict-select-row">
+              <label for="cloudConflictTripSelect">Unsaved trip</label>
+              <select id="cloudConflictTripSelect" aria-label="Unsaved trip to compare"></select>
+              <button class="btn btn-outline" type="button" id="compareCloudTripBtn">Compare versions</button>
+            </div>
+            <div id="cloudConflictComparison" hidden>
+              <p id="cloudConflictChangeNotice" class="cloud-conflict-notice"></p>
+              <div class="cloud-conflict-table" id="cloudConflictTable" aria-label="Comparison of local and cloud trip versions"></div>
+              <p class="cloud-conflict-disclaimer">Choosing a version replaces the <strong>entire trip</strong>, including travel options and savings. No fields are merged automatically. Download an unsaved backup first if needed.</p>
+              <label class="cloud-recovery-confirm">
+                <input type="checkbox" id="acknowledgeConflictChoice" />
+                I reviewed both versions and understand that the other version may be lost for this trip.
+              </label>
+              <div class="cloud-conflict-actions">
+                <button class="btn btn-outline" type="button" id="acceptCloudTripBtn">Use cloud version</button>
+                <button class="btn btn-outline" type="button" id="acceptLocalTripBtn">Save my version to cloud</button>
+              </div>
+            </div>
+          </div>
+          <label class="cloud-recovery-confirm">
+            <input type="checkbox" id="acknowledgeRecoveryDiscard" />
+            I have saved a backup, or these edits are disposable test data.
+          </label>
+          <button class="btn btn-outline" type="button" id="discardRecoveryBtn">Discard local changes and reload cloud</button>
+          <p id="cloudRecoveryMessage" role="status" aria-live="polite"></p>
+        </section>
+        <details class="trip-backup-panel" id="tripBackupPanel">
+          <summary>Data backup &amp; restore</summary>
+          <div class="trip-backup-body">
+            <p>Download a private JSON backup of all saved trips, savings, travel options, and checklists. Keep this file secure.</p>
+            <button type="button" id="exportTripsBtn" class="btn btn-outline">Download all trips</button>
+            <div class="field full">
+              <label for="importTripsFile">Restore a Voyafundra full backup</label>
+              <input id="importTripsFile" type="file" accept=".json,application/json" />
+              <span class="hint">Only missing trips can be restored. Existing trips will not be overwritten or deleted.</span>
+            </div>
+            <pre id="tripBackupPreview" class="trip-backup-preview" role="status">Choose a Voyafundra full backup to preview its contents.</pre>
+            <label class="cloud-recovery-confirm">
+              <input type="checkbox" id="approveTripRestore" />
+              I reviewed the preview and want to restore only the missing trips.
+            </label>
+            <button type="button" id="restoreTripsBtn" class="btn btn-outline" disabled>Restore missing trips</button>
+            <p id="tripBackupMessage" role="status" aria-live="polite"></p>
+          </div>
+        </details>
         <div class="connection-banner" id="connectionBanner" role="status" hidden>
           You're offline. Cloud changes can't be saved or refreshed until you reconnect.
         </div>
@@ -257,7 +338,7 @@
       >
         <div class="modal-header">
           <h2 id="modalHeading"></h2>
-          <button class="close-btn" id="modalClose" aria-label="Close">
+          <button type="button" class="close-btn" id="modalClose" aria-label="Close form">
             ×
           </button>
         </div>
