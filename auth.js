@@ -349,6 +349,9 @@ async function logoutUser(isAutomatic = false) {
       console.warn("Sign-out check found a failed cloud write:", saveError);
     }
 
+    if (cloudWritesPending > 0 || window.voyafundraBackup?.isBusy?.()) {
+      throw new Error("Wait for the backup restore or current saves to finish.");
+    }
     const openEditor = !document.getElementById("modalLayer")
       ?.classList.contains("hidden");
     if (openEditor) {
