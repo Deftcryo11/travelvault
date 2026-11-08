@@ -59,6 +59,13 @@
   }
 
   function finishResolution(id, message) {
+    // A resolved trip must also clear its persistent journal so a completed
+    // save does not appear as a stale recoverable draft next time.
+    if (window.voyafundraDrafts && cloudUserId) {
+      window.voyafundraDrafts.forget(cloudUserId, id);
+    }
+    cloudRestoredDrafts.delete(id);
+    cloudRecoveryStorageFaults.delete(id);
     cloudUnsavedTripIds.delete(id);
     cloudTripSaveSequence.delete(id);
     if (cloudUnsavedTripIds.size === 0) {
@@ -103,7 +110,11 @@
     if (!reviewed) throw new Error("Review the latest versions first.");
     assertReady(reviewed.id);
     assertReviewFresh(reviewed, reviewed.generation);
-    if (!reviewed.local || !reviewed.remote || !reviewed.updatedAt) {
+    const restoringNewTrip = !!reviewed.local && !reviewed.remote &&
+      !reviewed.updatedAt && cloudRestoredDrafts.has(reviewed.id) &&
+      cloudRestoredDrafts.get(reviewed.id).baseVersion == null;
+    if (!reviewed.local ||
+        (!restoringNewTrip && (!reviewed.remote || !reviewed.updatedAt))) {
       throw new Error("A cloud trip was deleted or is missing; export your draft instead.");
     }
 
@@ -118,19 +129,25 @@
 
     const task = cloudWriteQueue.catch(() => {}).then(async () => {
       assertReviewFresh(reviewed, generation);
-      const updatedAt = new Date(Math.max(
-        Date.now(), Date.parse(reviewed.updatedAt) + 1
-      )).toISOString();
-
-      // Atomic conditional write: if the other device changed anything after
-      // the review, zero rows match and the local copy remains unsaved.
-      const { data, error } = await supabaseClient
-        .from("trips")
-        .update({ trip_data: snapshot, updated_at: updatedAt })
-        .eq("user_id", userId)
-        .eq("id", reviewed.id)
-        .eq("updated_at", reviewed.updatedAt)
-        .select("updated_at");
+      let data, error;
+      if (restoringNewTrip) {
+        // Only a journaled, previously NEW trip can be recreated explicitly.
+        // INSERT rejects duplicate IDs rather than overwriting them.
+        ({ data, error } = await supabaseClient.from("trips")
+          .insert({ id: reviewed.id, user_id: userId, trip_data: snapshot })
+          .select("updated_at"));
+      } else {
+        const updatedAt = new Date(Math.max(
+          Date.now(), Date.parse(reviewed.updatedAt) + 1
+        )).toISOString();
+        // Atomic conditional write: a newer cloud edit matches zero rows.
+        ({ data, error } = await supabaseClient.from("trips")
+          .update({ trip_data: snapshot, updated_at: updatedAt })
+          .eq("user_id", userId)
+          .eq("id", reviewed.id)
+          .eq("updated_at", reviewed.updatedAt)
+          .select("updated_at"));
+      }
       if (error) throw error;
       if (!data || data.length !== 1) {
         throw new Error("Cloud changed again; your version was not saved. Review again.");
