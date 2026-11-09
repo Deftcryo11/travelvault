@@ -6,11 +6,13 @@
   const nav = document.getElementById("mobileNav");
   const trips = document.getElementById("allTripsNav");
   const history = document.getElementById("historyNav");
+  const settings = document.getElementById("settingsNav");
   const content = document.getElementById("appContent");
   if (!nav || !trips || !history || !content) return;
 
   function syncNavigation() {
-    const active = history.classList.contains("active") ? "history" : "trips";
+    const active = settings?.classList.contains("active") ? "settings" :
+      history.classList.contains("active") ? "history" : "trips";
     nav.querySelectorAll("[data-mobile-action]").forEach((button) => {
       const selected = button.dataset.mobileAction === active;
       button.classList.toggle("active", selected);
@@ -34,6 +36,7 @@
 
   trips.addEventListener("click", syncNavigation);
   history.addEventListener("click", syncNavigation);
+  settings?.addEventListener("click", syncNavigation);
   new MutationObserver(syncNavigation).observe(content, { childList: true });
   new MutationObserver(() => {
     nav.hidden = !document.body.classList.contains("authenticated");
