@@ -104,6 +104,7 @@ test("checklist starter, toggle, edit, delete actions use the per-trip save path
     notify(msg){events.push("notice:"+msg);},
     render(){events.push("render");},
     field(name){return "<input name='"+name+"'>";},
+    selectField(name){return "<select name='"+name+"'></select>";},
     showModal(title,body,handler){submit=handler;events.push("modal");},
     confirmRemove(prompt,fn){fn();events.push("confirmed");app.saveTrips(t.id);app.render();},
   };
@@ -113,12 +114,12 @@ test("checklist starter, toggle, edit, delete actions use the per-trip save path
   ui.handleChecklistAction("checklist-toggle",t,id,app);
   assert.equal(t.checklist[0].done,true);
   ui.handleChecklistAction("checklist-edit",t,id,app);
-  assert.equal(submit({taskTitle:"Ticket confirmed",taskDue:"2027-01-01"}),true);
+  assert.equal(submit({taskTitle:"Ticket confirmed",taskDue:"2027-01-01",taskCategory:"Bookings",taskPriority:"High"}),true);
   assert.equal(t.checklist[0].title,"Ticket confirmed");
   assert.equal(t.checklist[0].dueDate,"2027-01-01");
   ui.handleChecklistAction("checklist-add",t,"",app);
   assert.equal(submit({taskTitle:"",taskDue:""}),false);
-  assert.equal(submit({taskTitle:"Pack bags",taskDue:""}),true);
+  assert.equal(submit({taskTitle:"Pack bags",taskDue:"",taskCategory:"Packing",taskPriority:"Normal"}),true);
   assert.equal(t.checklist.length,api.STARTER_CHECKLIST.length+1);
   ui.handleChecklistAction("checklist-delete",t,id,app);
   assert.equal(t.checklist.some(x=>x.id===id),false);
