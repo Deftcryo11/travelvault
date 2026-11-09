@@ -18,8 +18,10 @@
   if (!panel || !exportBtn || !importInput || !restoreBtn || !preview ||
       !message || !approval) return;
 
-  const FORMAT = "voyafundra-trip-backup-v1";
-  const MAX_FILE_BYTES = 8 * 1024 * 1024;
+  const FORMAT = "voyafundra-trip-backup-v2";
+  const LEGACY_FORMAT = "voyafundra-trip-backup-v1";
+  const MAX_FILE_BYTES = 12 * 1024 * 1024;
+  const MAX_RECORDS = 1000;
   const MAX_TRIPS = 120;
   let restoring = false;
   let candidate = null;
@@ -97,6 +99,9 @@
       return {
         id: item.id, title: text(item.title, 160),
         done: item.done === true, dueDate: safeDate(item.dueDate ?? ""),
+        category: optionalText(item.category, 60) || "Preparation",
+        priority: ["Low","Normal","High"].includes(item.priority)
+          ? item.priority : "Normal",
       };
     });
     if (checklist.length > 100) throw new Error("Too many checklist tasks.");
@@ -112,6 +117,17 @@
     if (startMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) {
       throw new Error("Invalid starting month.");
     }
+    const categorySource = t.budgetCategories ?? {};
+    if (!categorySource || typeof categorySource !== "object" ||
+        Array.isArray(categorySource) ||
+        Object.keys(categorySource).length > 40) {
+      throw new Error("Invalid budget categories.");
+    }
+    const budgetCategories = Object.create(null);
+    for (const [category, allocation] of Object.entries(categorySource)) {
+      if (!text(category,70)) throw new Error("Empty budget category.");
+      budgetCategories[category] = number(allocation);
+    }
     return {
       id: t.id,
       name: text(t.name, 160),
@@ -124,10 +140,32 @@
       monthCount,
       notes: optionalText(t.notes, 4000),
       createdAt: optionalText(t.createdAt, 60),
-      people, options, savings, checklist,
+      people, options, savings, checklist, budgetCategories,
+      schemaVersion: 2,
       personA: optionalText(t.personA, 120),
       personB: optionalText(t.personB, 120),
     };
+  }
+
+
+  function validateExpense(item) {
+    if (!item || !validId(item.id) || !validId(item.trip_id)) {
+      throw new Error("Invalid expense record.");
+    }
+    const safe = window.voyafundraV2Core?.expenseInput(item);
+    if (!safe) throw new Error("Expense parser unavailable.");
+    if (Math.abs(Number(item.amount_mvr)-safe.amount_mvr)>0.01) {
+      throw new Error("Expense currency conversion is inconsistent.");
+    }
+    return {id:item.id, trip_id:item.trip_id, ...safe};
+  }
+  function validatePlan(item) {
+    if (!item || !validId(item.id) || !validId(item.trip_id)) {
+      throw new Error("Invalid itinerary record.");
+    }
+    const safe = window.voyafundraV2Core?.itineraryInput(item);
+    if (!safe) throw new Error("Itinerary parser unavailable.");
+    return {id:item.id, trip_id:item.trip_id, ...safe};
   }
 
   function parseBackup(raw, userId) {
@@ -137,17 +175,31 @@
     let parsed;
     try { parsed = JSON.parse(raw); }
     catch { throw new Error("The selected file is not valid JSON."); }
-    if (!parsed || parsed.format !== FORMAT ||
-        !validId(parsed.account_id) || parsed.account_id !== userId ||
-        !Array.isArray(parsed.trips) || parsed.trips.length > MAX_TRIPS) {
+    const legacy=parsed?.format===LEGACY_FORMAT;
+    if (!parsed || (!legacy && parsed.format!==FORMAT) ||
+        !validId(parsed.account_id) || parsed.account_id!==userId ||
+        !Array.isArray(parsed.trips) || parsed.trips.length>MAX_TRIPS) {
       throw new Error("This is not a supported backup for the signed-in account.");
     }
-    const tripList = parsed.trips.map(validateTrip);
-    const ids = tripList.map((item) => item.id);
-    if (new Set(ids).size !== ids.length) {
-      throw new Error("Backup contains duplicate trip IDs.");
+    if (!legacy && (!Array.isArray(parsed.expenses) ||
+        !Array.isArray(parsed.plan_items) ||
+        parsed.expenses.length>MAX_RECORDS ||
+        parsed.plan_items.length>MAX_RECORDS)) {
+      throw new Error("Invalid version 2 records or size.");
     }
-    return { format: FORMAT, account_id: parsed.account_id, trips: tripList };
+    const tripList=parsed.trips.map(validateTrip);
+    const expenses=(legacy?[]:parsed.expenses).map(validateExpense);
+    const plan_items=(legacy?[]:parsed.plan_items).map(validatePlan);
+    for (const records of [tripList,expenses,plan_items]) {
+      const ids=records.map(item=>item.id);
+      if (new Set(ids).size!==ids.length) {
+        throw new Error("Backup contains duplicate record IDs.");
+      }
+    }
+    return {
+      format:parsed.format,account_id:parsed.account_id,
+      trips:tripList,expenses,plan_items
+    };
   }
 
   function readyForTransfer() {
