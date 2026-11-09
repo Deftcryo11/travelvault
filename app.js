@@ -214,6 +214,10 @@ async function loadCloudTrips(user) {
         : "Trips up to date"
   );
 
+  if (window.voyafundraV2?.load) {
+    await window.voyafundraV2.load(user.id);
+    if (epoch !== cloudEpoch) return false;
+  }
   render();
 
   return true;
@@ -230,7 +234,7 @@ async function refreshCloudTripsSafely(userId, options = {}) {
   const discardUnsaved = options.discardUnsaved === true;
   if (!cloudReady || !cloudUserId || cloudUserId !== userId ||
       cloudWritesPending > 0 || cloudRecoveryPendingDrafts.length ||
-      cloudRecoveryReadError ||
+      cloudRecoveryReadError || window.voyafundraV2?.status().unconfirmed ||
       (!discardUnsaved && (cloudSaveError || cloudUnsavedTripIds.size))) {
     throw new Error("Finish or resolve unsaved changes before refreshing.");
   }
@@ -277,6 +281,7 @@ async function refreshCloudTripsSafely(userId, options = {}) {
   }
   selectedTripId = null;
   currentView = "all";
+  await window.voyafundraV2?.load?.(userId);
   render();
   window.voyafundraUX?.setStatus("saved", "Trips refreshed from the cloud");
   return true;
@@ -385,6 +390,7 @@ function canStartTripEdit(tripId = null) {
  */
 function clearCloudTrips() {
   cloudEpoch++;
+  window.voyafundraV2?.reset?.();
 
   cloudUserId = null;
   cloudReady = false;
@@ -791,11 +797,13 @@ function render() {
 
   if (selectedTripId && getSelectedTrip()) {
     renderTripDetails();
+    window.voyafundraV2?.enhanceTrip?.(getSelectedTrip());
     return;
   }
 
   selectedTripId = null;
   renderTripList();
+  window.voyafundraV2?.enhanceList?.();
 }
 
 /* ==========================================
@@ -2312,6 +2320,10 @@ $("#appContent").addEventListener("click", (event) => {
 
     case "delete-trip":
       if (!trip) break;
+      if (window.voyafundraV2?.status().unconfirmed) {
+        notify("Resolve unconfirmed expense and itinerary drafts before deleting this trip.");
+        break;
+      }
 
       confirmRemove(
         `Permanently delete "${trip.name}" and all its data?`,
