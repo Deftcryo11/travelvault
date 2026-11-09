@@ -108,3 +108,60 @@ test("restore only inserts missing trip records after explicit acknowledgement",
   assert.match(js,/cloudTripRevisions\.set/);
   assert.match(app,/window\.voyafundraBackup\?\.isBusy\?\.\(\)/);
 });
+
+
+test("v2 full backup preserves expense, booking and enhanced checklist records",()=>{
+  const api=setup().api;
+  const newer={...trip(),budgetCategories:{Flights:10000,Food:2000},
+    checklist:[{id:"task-1",title:"Passport",done:false,dueDate:"2026-12-01",
+      category:"Documents",priority:"High"}]};
+  const expense={id:"expense-1",trip_id:"trip-1",expense_date:"2026-11-09",
+    category:"Flights",description:"Airfare",original_amount:200,
+    currency:"USD",exchange_rate:15,amount_mvr:3000,entry_type:"expense",
+    payment_status:"paid",booking_id:"plan-1",notes:""};
+  const plan={id:"plan-1",trip_id:"trip-1",kind:"flight",title:"Morning flight",
+    start_date:"2027-01-15",start_time:"09:00",end_date:null,end_time:null,
+    time_zone:"Asia/Colombo",location:"CMB",provider:"Airline",
+    booking_reference:"REF-1",booking_status:"confirmed",committed_mvr:3000,notes:""};
+  const payload=JSON.stringify({format:"voyafundra-trip-backup-v2",
+    account_id:"account-1",trips:[newer],expenses:[expense],plan_items:[plan]});
+  const parsed=api.parseBackup(payload,"account-1");
+  assert.equal(parsed.expenses.length,1);
+  assert.equal(parsed.expenses[0].amount_mvr,3000);
+  assert.equal(parsed.plan_items[0].booking_reference,"REF-1");
+  assert.equal(parsed.trips[0].checklist[0].priority,"High");
+  assert.equal(parsed.trips[0].checklist[0].category,"Documents");
+  assert.equal(parsed.trips[0].budgetCategories.Flights,10000);
+});
+
+test("v2 import rejects malformed expenses and duplicate itinerary records",()=>{
+  const api=setup().api;
+  const row={id:"a",trip_id:"trip-1",expense_date:"2026-11-09",
+    category:"Food",description:"Lunch",original_amount:100,
+    amount_mvr:999,currency:"MVR",entry_type:"expense",payment_status:"paid"};
+  const wrap2=(expenses,plan_items)=>JSON.stringify({
+    format:"voyafundra-trip-backup-v2",account_id:"account-1",
+    trips:[trip()],expenses,plan_items});
+  assert.throws(()=>api.parseBackup(wrap2([row],[]),"account-1"),/inconsistent/);
+  const plan={id:"p",trip_id:"trip-1",kind:"hotel",title:"Stay",
+    start_date:"2027-01-15",booking_status:"confirmed",committed_mvr:500};
+  assert.throws(()=>api.parseBackup(wrap2([], [plan,plan]),"account-1"),/duplicate/);
+  assert.throws(()=>api.parseBackup(wrap2([],[]),"other-account"),/not a supported/);
+});
+
+test("backward-compatible version 1 imports keep empty activity collections",()=>{
+  const parsed=setup().api.parseBackup(wrap([trip()]),"account-1");
+  assert.equal(parsed.format,"voyafundra-trip-backup-v1");
+  assert.equal(parsed.expenses.length,0);
+  assert.equal(parsed.plan_items.length,0);
+});
+
+test("complete backup export reads all three tables and imports never overwrite",()=>{
+  assert.match(js,/from\("trip_expenses"\)/);
+  assert.match(js,/from\("trip_plan_items"\)/);
+  assert.match(js,/format:FORMAT/);
+  assert.match(js,/known\.has\(key\)/);
+  assert.match(js,/tripIds\.has\(record\.trip_id\)/);
+  assert.doesNotMatch(js,/\.upsert\(/);
+  assert.doesNotMatch(js,/\.delete\(\)/);
+});
