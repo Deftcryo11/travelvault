@@ -382,7 +382,6 @@
     if(state.writes>0)throw Error("Finish the previous save first.");
     if(!cloudReady||!cloudUserId||state.account!==cloudUserId||
       state.loadError||state.loading)throw Error("Cloud workspace is not ready.");
-    if(!navigator.onLine)throw Error("Reconnect before saving.");
     const user=cloudUserId,epoch=state.epoch;
     const id=existing?.id||generateId();
     const baseRevision=existing?.revision??null;
@@ -398,6 +397,7 @@
     }
     state.writes++;
     try{
+      if(!navigator.onLine)throw Error("Offline: your local draft is preserved; reconnect to retry.");
       const query=supabaseClient.from(table);
       const result=baseRevision===null?
         await query.insert(payload).select("*"):
@@ -523,8 +523,11 @@
       '<h2>Checklist</h2>'+info.checklist.map(x=>
         '<p>'+(x.done?'✓ ':'□ ')+h(x.title)+'</p>').join("");
     document.body.appendChild(target);
+    const cleanup=()=>target.remove();
+    window.addEventListener("afterprint",cleanup,{once:true});
     window.print();
-    target.remove();
+    // Fallback for browsers that never fire afterprint.
+    setTimeout(cleanup,60000);
   }
   function reviewDrafts(){
     if(!state.drafts.length)return notify("No unconfirmed drafts remain.");
@@ -573,7 +576,9 @@
       try{
         journal().forget(draft.userId,draft.table,draft.id,draft.token);
         state.drafts=journal().list(state.account);
-        state.reviewed=null;closeModal();refreshView();
+        state.reviewed=null;closeModal();
+        await load(state.account);
+        refreshView();
       }catch(e){notify(errorText(e));}return;
     }
     if(!window.confirm(
@@ -642,6 +647,7 @@
   });
   window.voyafundraV2={
     status,reset,load,enhanceTrip,enhanceList,
+    showDrafts:()=>{if(state.drafts.length)reviewDrafts();},
     exportRows:()=>({expenses:state.expenses.slice(),plan_items:state.plans.slice()}),
     reload:async()=>{if(state.account){await load(state.account);refreshView();}},
     expenseSummary:tripId=>core().expenseSummary(scoped(TABLE.expenses,tripId),
