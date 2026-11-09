@@ -358,12 +358,15 @@ async function logoutUser(isAutomatic = false) {
       throw new Error("Close or save the open form before signing out.");
     }
 
+    const v2Status = window.voyafundraV2?.status?.();
     const unconfirmed = !!cloudSaveError || cloudUnsavedTripIds.size > 0 ||
-      cloudRecoveryPendingDrafts.length > 0 || !!cloudRecoveryReadError;
+      cloudRecoveryPendingDrafts.length > 0 || !!cloudRecoveryReadError ||
+      !!v2Status?.unconfirmed;
     if (unconfirmed) {
       if (!isAutomatic) {
         window.voyafundraUX?.showRecovery?.();
         window.voyafundraUX?.showDrafts?.();
+        window.voyafundraV2?.showDrafts?.();
         throw new Error(
           "Some trip changes have not been confirmed by Supabase. " +
           "Review the saved drafts or conflicts before logging out."
@@ -377,7 +380,8 @@ async function logoutUser(isAutomatic = false) {
         window.voyafundraDrafts.covers(userId,
           Array.from(cloudUnsavedTripIds));
       if (!stored || cloudRecoveryStorageFaults.size > 0 ||
-          cloudRecoveryReadError) {
+          cloudRecoveryReadError || v2Status?.protected === false ||
+          (v2Status?.writes || 0) > 0) {
         throw new Error(
           "Session expiration delayed: unconfirmed edits have no verified local backup."
         );
