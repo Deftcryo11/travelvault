@@ -173,3 +173,34 @@ test("unprotected failed edits delay automatic logout", async () => {
   assert.equal(signOutCount,0);
   assert.equal(retries,1);
 });
+
+test("logout never interrupts a full-account restore in progress", async()=>{
+  const start=auth.indexOf("async function logoutUser(isAutomatic = false)");
+  const end=auth.indexOf("\nlogoutBtn.addEventListener(",start);
+  let signOutCount=0,retries=0;
+  const ctx=vm.createContext({
+    window:{
+      alert(){},
+      voyafundraBackup:{isBusy(){return true;}},
+      voyafundraUX:{setStatus(){},showRecovery(){},showDrafts(){}},
+      voyafundraDrafts:{covers(){return true;}}
+    },
+    document:{getElementById(){return {classList:{contains(){return true;}}};}},
+    supabaseClient:{auth:{async signOut(){signOutCount++;return{error:null};}}},
+    logoutBtn:{disabled:false},console:{warn(){},error(){},log(){}},
+    stopIdleTimer(){},waitForCloudSaves:async()=>{},scheduleIdleCheck(){},
+    showAuthMessage(){},clearLastActivity(){},checkIdleTimeout(){},
+    setTimeout(){retries++;return 1;}
+  });
+  vm.runInContext([
+    'let logoutInProgress=false,activeUserId="user-1",idleTimer=null;',
+    'let cloudSaveError=null,cloudWritesPending=1;',
+    'let cloudUnsavedTripIds=new Set(),cloudRecoveryPendingDrafts=[];',
+    'let cloudRecoveryReadError=null,cloudRecoveryStorageFaults=new Set();'
+  ].join("\n")+"\n"+auth.slice(start,end),ctx);
+  await vm.runInContext("logoutUser(false)",ctx);
+  assert.equal(signOutCount,0);
+  await vm.runInContext("logoutUser(true)",ctx);
+  assert.equal(signOutCount,0);
+  assert.equal(retries,1);
+});
