@@ -1554,6 +1554,10 @@ function showModal(title, body, onSubmit) {
 }
 
 function closeModal() {
+  if (window.voyafundraV2?.status?.().writes > 0) {
+    notify("Wait for the current expense or itinerary save to finish.");
+    return;
+  }
   window.voyafundraCalendar?.closeAll();
   $("#modalLayer").classList.add("hidden");
   $("#modalBody").innerHTML = "";
