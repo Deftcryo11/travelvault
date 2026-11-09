@@ -352,6 +352,12 @@ async function logoutUser(isAutomatic = false) {
     if (cloudWritesPending > 0 || window.voyafundraBackup?.isBusy?.()) {
       throw new Error("Wait for the backup restore or current saves to finish.");
     }
+    // Full-account restoration uses its own write loop rather than the
+    // ordinary per-trip queue. Never sign out while those writes are active.
+    if (cloudWritesPending > 0 || window.voyafundraBackup?.isBusy?.()) {
+      throw new Error("Wait for the current trip save or backup restore to finish.");
+    }
+
     const openEditor = !document.getElementById("modalLayer")
       ?.classList.contains("hidden");
     if (openEditor) {
