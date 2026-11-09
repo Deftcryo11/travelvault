@@ -321,46 +321,82 @@
   async function restoreMissing() {
     if (!candidate || !approval.checked || restoring) return;
     readyForTransfer();
-    const userId = cloudUserId;
-    if (candidate.account_id !== userId) throw new Error("Wrong account backup.");
-    const missing = candidate.trips.filter((t) => !trips.some((live) => live.id === t.id));
-    if (!missing.length) return updatePreview();
-    if (!window.confirm("Restore " + missing.length + " missing trip(s) to this " +
-      "account? Existing trips are never replaced. Continue?")) return;
-
-    restoring = true;
+    const userId=cloudUserId;
+    if(candidate.account_id!==userId)throw Error("Wrong account backup.");
+    if(!window.confirm("Restore ONLY missing trips, expense entries and itinerary "+
+      "records from this backup? Existing records will not be overwritten."))return;
+    restoring=true;
     cloudWritesPending++;
     cloudWriteGeneration++;
-    restoreBtn.disabled = true;
-    let restored = 0;
-    try {
-      const epoch = cloudEpoch;
+    restoreBtn.disabled=true;
+    const count={trips:0,expenses:0,plan_items:0};
+    try{
+      const epoch=cloudEpoch;
       await verifyAccount(userId);
-      for (const trip of missing) {
-        if (epoch !== cloudEpoch || userId !== cloudUserId) {
-          throw new Error("Account changed during restore.");
-        }
-        const { data, error } = await supabaseClient.from("trips")
-          .insert({ id: trip.id, user_id: userId, trip_data: trip })
-          .select("id, updated_at, revision");
-        if (error) throw error;
-        if (!data || data.length !== 1) throw new Error("Restore wasn't confirmed.");
-        cloudTripVersions.set(trip.id, data[0].updated_at);
-        cloudTripRevisions.set(trip.id, data[0].revision);
-        trips.unshift(trip);
-        restored++;
-        render();
+      // Query current cloud IDs; this matters when another device has added
+      // a record since the preview. Conflicting INSERTs fail safely.
+      const [tripResult,expResult,planResult]=await Promise.all([
+        supabaseClient.from("trips").select("id").eq("user_id",userId),
+        supabaseClient.from("trip_expenses").select("id,trip_id").eq("user_id",userId),
+        supabaseClient.from("trip_plan_items").select("id,trip_id").eq("user_id",userId)
+      ]);
+      if(tripResult.error||expResult.error||planResult.error)
+        throw tripResult.error||expResult.error||planResult.error;
+      if(epoch!==cloudEpoch||cloudUserId!==userId)
+        throw Error("Account changed during restore.");
+      const tripIds=new Set((tripResult.data||[]).map(x=>x.id));
+      const expIds=new Set((expResult.data||[]).map(x=>x.trip_id+"|"+x.id));
+      const planIds=new Set((planResult.data||[]).map(x=>x.trip_id+"|"+x.id));
+
+      for(const trip of candidate.trips){
+        if(tripIds.has(trip.id))continue;
+        if(epoch!==cloudEpoch||cloudUserId!==userId)
+          throw Error("Account changed during restore.");
+        const {data,error}=await supabaseClient.from("trips").insert({
+          id:trip.id,user_id:userId,trip_data:trip
+        }).select("id,updated_at,revision");
+        if(error)throw error;
+        if(!data||data.length!==1)throw Error("Trip insertion not confirmed.");
+        tripIds.add(trip.id);
+        cloudTripVersions.set(trip.id,data[0].updated_at);
+        cloudTripRevisions.set(trip.id,data[0].revision);
+        trips.unshift(trip);count.trips++;
       }
-      message.textContent = restored + " missing trip(s) restored. Existing trips unchanged.";
-      candidate = null;
-      importInput.value = "";
-      approval.checked = false;
-    } catch (error) {
-      message.textContent = restored + " restored before an error: " +
-        (error.message || String(error)) + ". Refresh after verifying cloud status.";
-    } finally {
-      restoring = false;
-      cloudWritesPending = Math.max(0, cloudWritesPending - 1);
+      for(const [table,records,known,kind] of [
+        ["trip_expenses",candidate.expenses,expIds,"expenses"],
+        ["trip_plan_items",candidate.plan_items,planIds,"plan_items"]
+      ]){
+        for(const record of records){
+          const key=record.trip_id+"|"+record.id;
+          if(known.has(key))continue;
+          if(!tripIds.has(record.trip_id)) {
+            throw Error("Backup contains a record without a valid parent trip.");
+          }
+          if(epoch!==cloudEpoch||cloudUserId!==userId)
+            throw Error("Account changed during restore.");
+          const {data,error}=await supabaseClient.from(table).insert({
+            ...record,user_id:userId
+          }).select("id");
+          if(error)throw error;
+          if(!data||data.length!==1)throw Error("Record insertion not confirmed.");
+          known.add(key);count[kind]++;
+        }
+      }
+      await window.voyafundraV2?.reload?.();
+      render();
+      message.textContent="Restore confirmed: "+count.trips+" trips, "+
+        count.expenses+" expenses, "+count.plan_items+
+        " itinerary entries. Existing records were not overwritten.";
+      candidate=null;importInput.value="";approval.checked=false;
+    }catch(error){
+      message.textContent="Partial restore: "+count.trips+" trips, "+
+        count.expenses+" expenses and "+count.plan_items+
+        " itinerary entries inserted before an error: "+(error.message||String(error))+
+        ". No existing records were overwritten. Verify cloud status before retrying.";
+      await window.voyafundraV2?.reload?.();
+    }finally{
+      restoring=false;
+      cloudWritesPending=Math.max(0,cloudWritesPending-1);
       updatePreview();
     }
   }
