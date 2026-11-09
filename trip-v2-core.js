@@ -41,9 +41,13 @@
     const currency = str(form.currency,3);
     if (!["MVR","USD"].includes(currency)) throw new Error("Unsupported currency.");
     const original_amount = positive(form.original_amount);
-    const exchange_rate = currency==="MVR" ? 1 : Number(form.exchange_rate);
-    if (!Number.isFinite(exchange_rate) || exchange_rate<=0 || exchange_rate>1e6)
+    const submittedRate = currency==="MVR" ? 1 : Number(form.exchange_rate);
+    if (!Number.isFinite(submittedRate) || submittedRate<=0 || submittedRate>1e6)
       throw new Error("Enter a positive bank exchange rate for USD.");
+    // Supabase stores the rate with six decimal places. Calculate MVR from
+    // that same rounded snapshot, so JSON exports can be validated reliably.
+    const exchange_rate = Math.round(submittedRate * 1e6) / 1e6;
+    if (exchange_rate <= 0) throw new Error("Exchange rate is too small.");
     const amount_mvr = round(original_amount * exchange_rate);
     if (amount_mvr > 1e9) throw new Error("Converted expense is too large.");
     const entry_type = str(form.entry_type,10);
