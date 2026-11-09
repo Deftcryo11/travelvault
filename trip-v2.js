@@ -607,6 +607,22 @@
       notify("Cloud version may have changed. Compare again: "+errorText(e));
     }
   }
+  root.addEventListener("keydown",(event)=>{
+    const current=event.target.closest?.("[data-vf2-tab]");
+    if(!current)return;
+    const all=[...root.querySelectorAll("[data-vf2-tab]")];
+    const index=all.indexOf(current);
+    if(index<0)return;
+    let next=index;
+    if(event.key==="ArrowRight")next=(index+1)%all.length;
+    else if(event.key==="ArrowLeft")next=(index+all.length-1)%all.length;
+    else if(event.key==="Home")next=0;
+    else if(event.key==="End")next=all.length-1;
+    else return;
+    event.preventDefault();
+    setTab(all[next].dataset.vf2Tab);
+    all[next].focus({preventScroll:true});
+  });
   root.addEventListener("click",async event=>{
     const b=event.target.closest("[data-vf2-action]");
     if(!b)return;
