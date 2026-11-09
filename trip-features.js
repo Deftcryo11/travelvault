@@ -107,6 +107,12 @@
   function renderChecklist(trip) {
     const list = Array.isArray(trip.checklist) ? trip.checklist : [];
     const summary = insights().checklistSummary(trip);
+    const today = window.voyafundraV2Core?.localDate?.() || "";
+    const prioritized = list.slice().sort((a,b) =>
+      Number(!!a.done)-Number(!!b.done) ||
+      String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")) ||
+      ({High:0,Normal:1,Low:2}[a.priority] ?? 1) -
+      ({High:0,Normal:1,Low:2}[b.priority] ?? 1));
     const actions = '<div class="checklist-actions">' +
       '<button type="button" class="btn btn-primary btn-small" data-action="checklist-add">' +
       '+ Add task</button>' +
@@ -117,15 +123,20 @@
       ? '<p class="checklist-empty">Keep your bookings and preparations in one place. ' +
         'Start with suggested tasks or add your own.</p>'
       : '<ul class="checklist-list">' +
-        list.map((item) => '<li class="checklist-item' +
-          (item.done ? ' is-done' : '') + '">' +
+        prioritized.map((item) => '<li class="checklist-item' +
+          (item.done ? ' is-done' : '') +
+          (!item.done && item.dueDate && item.dueDate < today ? ' vf2-overdue' : '') + '">' +
           '<button type="button" class="checklist-toggle" data-action="checklist-toggle" ' +
           'data-id="' + h(item.id) + '" aria-label="' +
           h((item.done ? 'Mark incomplete: ' : 'Mark complete: ') + item.title) +
           '" aria-pressed="' + (item.done ? 'true' : 'false') + '">' +
           (item.done ? '✓' : '') + '</button>' +
           '<div class="checklist-task-copy"><strong>' + h(item.title) + '</strong>' +
-          (item.dueDate ? '<small>Due ' + h(item.dueDate) + '</small>' : '') +
+          '<small>' + h(item.category || 'Preparation') + ' · ' +
+          h(item.priority || 'Normal') + ' priority</small>' +
+          (item.dueDate ? '<small>' +
+            (!item.done && item.dueDate < today ? 'Overdue: ' : 'Due: ') +
+            h(item.dueDate) + '</small>' : '') +
           '</div><div class="inline-actions">' +
           '<button type="button" class="btn-link" data-action="checklist-edit" data-id="' +
           h(item.id) + '">Edit</button>' +
@@ -158,6 +169,10 @@
       if (tasks.length) return true;
       trip.checklist = insights().STARTER_CHECKLIST.map((title) => ({
         id: app.generateId(), title, dueDate: "", done: false,
+        category: title.toLowerCase().includes("passport") ||
+          title.toLowerCase().includes("visa") ? "Documents" :
+          title.toLowerCase().includes("packing") ? "Packing" : "Bookings",
+        priority: "Normal",
       }));
       save();
       return true;
@@ -186,7 +201,11 @@
       if (action === "checklist-edit" && !existing) return true;
       const body = app.field("taskTitle", "Task", existing?.title || "",
         "text", { required: true, placeholder: "e.g. Confirm hotel booking" }) +
-        app.field("taskDue", "Due date (optional)", existing?.dueDate || "", "date");
+        app.field("taskDue", "Due date (optional)", existing?.dueDate || "", "date") +
+        app.selectField("taskCategory", "Category", existing?.category || "Preparation",
+          ["Preparation","Documents","Bookings","Transport","Packing","Health","Other"]) +
+        app.selectField("taskPriority", "Priority", existing?.priority || "Normal",
+          ["Low","Normal","High"]);
       app.showModal(existing ? "Edit checklist task" : "New checklist task",
         body, (form) => {
           const title = (form.taskTitle || "").trim();
@@ -202,6 +221,8 @@
           if (existing) {
             existing.title = title;
             existing.dueDate = form.taskDue || "";
+            existing.category = form.taskCategory;
+            existing.priority = form.taskPriority;
           } else {
             if (trip.checklist.length >= 100) {
               app.notify("Maximum 100 checklist tasks per trip.");
@@ -209,6 +230,7 @@
             }
             trip.checklist.push({
               id: app.generateId(), title, dueDate: form.taskDue || "", done: false,
+              category: form.taskCategory, priority: form.taskPriority,
             });
           }
           app.saveTrips(trip.id);
