@@ -82,3 +82,10 @@
     background:white!important;font:13px/1.55 Arial,sans-serif}
   .vf2-print-target h1{font-size:22px}.vf2-print-target h2{font-size:16px;margin-top:20px}
 }
+
+.mobile-settings-btn{display:none!important}
+@media(max-width:700px){
+  #appSidebar #mobileSettingsBtn{display:inline-flex!important;font-size:22px;line-height:1}
+  .checklist-item.vf2-overdue{border-left:3px solid var(--negative);padding-left:8px}
+}
+@media(min-width:701px){.checklist-item.vf2-overdue{border-left:3px solid var(--negative);padding-left:8px}}
