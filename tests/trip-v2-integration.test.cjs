@@ -42,6 +42,7 @@ function harness({errorTable=null}={}) {
     window:{voyafundraV2Drafts:{list(){return[];}}},
     supabaseClient:client,console,Date,Math,
     cloudUserId:account,cloudReady:true,
+    trips:[{id:"trip-1",budget:10000},{id:"trip-2",budget:2000}],
     notify(){},render(){}
   });
   vm.runInContext(pure+"\n"+source,context);
