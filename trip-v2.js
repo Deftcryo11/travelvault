@@ -252,7 +252,8 @@
       const where=title==="Savings progress"?"overview":
         title==="Budget & savings insights"||title==="Monthly savings tracker"?"savings":
         title.includes("Flight & trip cost comparison")?"budget":
-        title==="Travel checklist"||title==="Trip notes"?"checklist":null;
+        title==="Travel checklist"?"checklist":
+        title==="Trip notes"?"overview":null;
       if(where)containers[where].appendChild(child);
     }
     containers.overview.insertAdjacentHTML("beforeend",inlineNotice()+
