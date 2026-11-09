@@ -100,7 +100,8 @@ test("restore only inserts missing trip records after explicit acknowledgement",
   assert.match(js,/candidate\.account_id!==userId/);
   assert.match(js,/if \(!candidate \|\| !approval\.checked \|\| restoring\) return/);
   assert.match(js,/window\.confirm\(/);
-  assert.match(js,/\.insert\(\{ id: trip\.id, user_id: userId, trip_data: trip \}\)/);
+  assert.match(js,/\.from\("trips"\)\.insert\(\{/);
+  assert.match(js,/\.from\(table\)\.insert\(\{/);
   assert.doesNotMatch(js,/\.upsert\(/);
   assert.doesNotMatch(js,/\.update\(\{ trip_data/);
   assert.doesNotMatch(js,/\.delete\(\)/);
