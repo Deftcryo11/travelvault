@@ -4,6 +4,22 @@
  * per-trip JSON column and go through the same revision-guarded cloud save. */
 (() => {
   const insights = () => window.voyafundraInsights;
+  const CHECKLIST_TEMPLATES = Object.freeze({
+    "General preparation": [
+      "Check passport validity","Confirm accommodation",
+      "Review travel insurance","Plan airport transfers","Prepare packing list"
+    ],
+    "International travel": [
+      "Check passport validity","Review visa or entry requirements",
+      "Confirm flights","Confirm accommodation","Arrange travel insurance",
+      "Check destination health requirements","Prepare travel documents",
+      "Plan airport transfers","Arrange mobile roaming or eSIM"
+    ],
+    "Weekend getaway": [
+      "Confirm transport","Confirm accommodation","Check weather forecast",
+      "Pack essentials","Arrange local transport","Check booking confirmations"
+    ],
+  });
   const h = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const mvr = (value) => "MVR " + Number(value || 0).toLocaleString("en-US", {
@@ -116,6 +132,8 @@
     const actions = '<div class="checklist-actions">' +
       '<button type="button" class="btn btn-primary btn-small" data-action="checklist-add">' +
       '+ Add task</button>' +
+      '<button type="button" class="btn btn-outline btn-small" ' +
+      'data-action="checklist-template">Use template</button>' +
       (!list.length ? '<button type="button" class="btn btn-outline btn-small" ' +
         'data-action="checklist-starter">Add starter checklist</button>' : '') +
       '</div>';
@@ -164,6 +182,41 @@
       app.notify("Checklist change queued — check cloud save status.");
       app.render();
     };
+
+    if (action === "checklist-template") {
+      app.showModal("Add tasks from a template",
+        app.selectField("taskTemplate","Travel checklist template",
+          "General preparation",Object.keys(CHECKLIST_TEMPLATES)),
+        (form) => {
+          const selected=CHECKLIST_TEMPLATES[form.taskTemplate];
+          if (!selected) {
+            app.notify("Choose a checklist template.");
+            return false;
+          }
+          const existing=new Set((Array.isArray(trip.checklist)?trip.checklist:[])
+            .map(item=>String(item.title||"").trim().toLowerCase()));
+          const candidates=selected.filter(title=>!existing.has(title.toLowerCase()));
+          if (!candidates.length) {
+            app.notify("All tasks from this template already exist.");
+            return false;
+          }
+          const current=Array.isArray(trip.checklist)?trip.checklist:[];
+          if (current.length+candidates.length>100) {
+            app.notify("Template would exceed 100 checklist tasks.");
+            return false;
+          }
+          trip.checklist=current.concat(candidates.map(title=>({
+            id:app.generateId(),title,dueDate:"",done:false,
+            category:/passport|visa|document|entry/i.test(title)?"Documents":
+              /pack/i.test(title)?"Packing":
+              /transport|transfer/i.test(title)?"Transport":"Preparation",
+            priority:"Normal"
+          })));
+          save();
+          return true;
+        });
+      return true;
+    }
 
     if (action === "checklist-starter") {
       if (tasks.length) return true;
