@@ -106,7 +106,11 @@
     return Number.isFinite(n) && n>0?n:0;
   };
   function saverForecast(trip,currentDate) {
-    const people=Array.isArray(trip?.people)?trip.people:[];
+    const people=Array.isArray(trip?.people)&&trip.people.length?
+      trip.people:[
+        {id:"legacy-a",name:trip?.personA||"Saver A",monthlyTarget:0},
+        {id:"legacy-b",name:trip?.personB||"Saver B",monthlyTarget:0}
+      ];
     const savedRows=Array.isArray(trip?.savings)?trip.savings:[];
     const target=Number(trip?.budget)||0;
     const allSaved=people.reduce((total,p)=>total+
