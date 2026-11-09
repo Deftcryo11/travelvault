@@ -790,11 +790,16 @@ function updateNavigation() {
   $("#allTripsNav").classList.toggle("active", currentView === "all");
 
   $("#historyNav").classList.toggle("active", currentView === "history");
+  $("#settingsNav").classList.toggle("active", currentView === "settings");
 }
 
 function render() {
   updateNavigation();
-
+  if (currentView === "settings") {
+    selectedTripId = null;
+    renderSettings();
+    return;
+  }
   if (selectedTripId && getSelectedTrip()) {
     renderTripDetails();
     window.voyafundraV2?.enhanceTrip?.(getSelectedTrip());
@@ -804,6 +809,30 @@ function render() {
   selectedTripId = null;
   renderTripList();
   window.voyafundraV2?.enhanceList?.();
+}
+
+function renderSettings() {
+  $("#pageTitle").textContent = "Settings & Data";
+  $("#pageSubtitle").textContent =
+    "Manage your appearance, backups, sessions and cloud workspace.";
+  $("#appContent").innerHTML =
+    '<section class="panel vf2-section">'+
+    '<h2>Appearance</h2><p>Voyafundra follows your device theme by default. '+
+    'Use the existing theme control to switch between Light and Dark Mode.</p>'+
+    '<div class="vf2-toolbar"><button type="button" class="btn btn-outline" '+
+    'data-action="settings-theme">Toggle app theme</button></div></section>'+
+    '<section class="panel vf2-section"><h2>Data backup &amp; restore</h2>'+
+    '<p>Export a private Version 2 backup of trips, savings, expenses and bookings. '+
+    'Restore always previews first and never overwrites an existing record.</p>'+
+    '<div class="vf2-toolbar"><button type="button" class="btn btn-primary" '+
+    'data-action="settings-backup">Open backup &amp; restore</button>'+
+    '<button type="button" class="btn btn-outline" '+
+    'data-action="settings-refresh">Refresh saved trips</button></div></section>'+
+    '<section class="panel vf2-section"><h2>Privacy &amp; account</h2>'+
+    '<p>Emergency drafts are stored in this browser and are not encrypted. '+
+    'Use a trusted personal device. Logout is guarded when unsaved data remains.</p>'+
+    '<div class="vf2-toolbar"><button type="button" class="btn btn-outline" '+
+    'data-action="settings-logout">Log out safely</button></div></section>';
 }
 
 /* ==========================================
@@ -2228,6 +2257,12 @@ $("#historyNav").addEventListener("click", () => {
 
   render();
 });
+$("#settingsNav").addEventListener("click", () => {
+  selectedTripId = null;
+  currentView = "settings";
+  render();
+});
+$("#mobileSettingsBtn").addEventListener("click", () => $("#settingsNav").click());
 
 /* ==========================================
    MODAL - SAFE OUTSIDE CLICK HANDLING
@@ -2295,6 +2330,20 @@ $("#appContent").addEventListener("click", (event) => {
   }
 
   switch (action) {
+    case "settings-theme":
+      $("#themeToggle").click();
+      break;
+    case "settings-backup": {
+      const backup = $("#tripBackupPanel");
+      if (backup) {backup.open = true; backup.scrollIntoView({behavior:"smooth"});}
+      break;
+    }
+    case "settings-refresh":
+      $("#refreshTripsBtn").click();
+      break;
+    case "settings-logout":
+      $("#logoutBtn").click();
+      break;
     case "new":
       tripForm();
       break;
