@@ -2289,7 +2289,7 @@ $("#appContent").addEventListener("click", (event) => {
 
   if (action.startsWith("checklist-")) {
     if (trip) window.voyafundraFeatures?.handleChecklistAction(action, trip, id, {
-      field, showModal, saveTrips, notify, render, generateId, confirmRemove,
+      field, selectField, showModal, saveTrips, notify, render, generateId, confirmRemove,
     });
     return;
   }
