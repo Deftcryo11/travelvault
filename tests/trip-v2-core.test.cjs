@@ -109,3 +109,33 @@ test("version 2 integration loads before auth and prevents unsafe refresh or log
  assert.match(auth,/v2Status\?\.unconfirmed/);
  assert.match(pwa,/voyafundraV2\?\.status/);
 });
+
+test("legacy two-person contributions remain visible in new savings panel",()=>{
+  const old={budget:5000,departure:"2027-01-09",personA:"A",personB:"B",
+    savings:[{month:"Nov 2026",savedA:300,savedB:450,planA:500,planB:600}]};
+  const data=plain(c.saverForecast(old,"2026-11-09"));
+  assert.equal(data.totalSaved,750);
+  assert.equal(data.people[0].saved,300);
+  assert.equal(data.people[1].saved,450);
+  assert.equal(data.people[0].name,"A");
+});
+
+test("USD conversion uses stored six-digit rate before rounding MVR",()=>{
+  const form={expense_date:"2026-11-09",description:"Conversion",
+    category:"Other",original_amount:999999,currency:"USD",
+    exchange_rate:15.123456789,entry_type:"expense",payment_status:"paid"};
+  const x=c.expenseInput(form);
+  assert.equal(x.exchange_rate,15.123457);
+  assert.equal(x.amount_mvr,15123441.88);
+  assert.throws(()=>c.expenseInput({...form,exchange_rate:0.0000001}),/too small/);
+});
+
+test("recovery reuses the same expense and itinerary record identifiers",()=>{
+  const script=fs.readFileSync(path.join(root,"trip-v2.js"),"utf8");
+  assert.match(script,/const formRecord = existing \|\| \{ id: generateId\(\), revision: null \}/);
+  assert.match(script,/const original=remote\?/);
+  assert.match(script,/\{id:draft\.id,revision:null\}/);
+  assert.match(script,/if \(!confirmed\) throw Error/);
+  assert.match(fs.readFileSync(path.join(root,"app.js"),"utf8"),
+    /Wait for the current expense or itinerary save to finish/);
+});
