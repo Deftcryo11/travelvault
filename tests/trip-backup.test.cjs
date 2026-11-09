@@ -6,6 +6,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const root = path.resolve(__dirname, "..");
 const js = fs.readFileSync(path.join(root, "trip-backup.js"), "utf8");
+const core = fs.readFileSync(path.join(root, "trip-v2-core.js"), "utf8");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const ids = [
@@ -29,7 +30,7 @@ function setup() {
     }},
     Date, Number, JSON, console,
   });
-  vm.runInContext(js, ctx);
+  vm.runInContext(core + "\n" + js, ctx);
   return { api:ctx.window.voyafundraBackup, nodes, ctx };
 }
 
@@ -96,7 +97,7 @@ test("a backup cannot inject extra fields into the restored trip schema", () => 
 });
 
 test("restore only inserts missing trip records after explicit acknowledgement", () => {
-  assert.match(js,/candidate\.account_id !== userId/);
+  assert.match(js,/candidate\.account_id!==userId/);
   assert.match(js,/if \(!candidate \|\| !approval\.checked \|\| restoring\) return/);
   assert.match(js,/window\.confirm\(/);
   assert.match(js,/\.insert\(\{ id: trip\.id, user_id: userId, trip_data: trip \}\)/);
