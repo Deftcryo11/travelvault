@@ -154,7 +154,7 @@
     if (!cloudReady || !cloudUserId || cloudWritesPending > 0 ||
         cloudSaveError || cloudUnsavedTripIds.size ||
         cloudRecoveryPendingDrafts.length || cloudRecoveryReadError ||
-        restoring) {
+        window.voyafundraV2?.status?.().unconfirmed || restoring) {
       throw new Error("Resolve all pending, failed, or recovered trip edits first.");
     }
     if (!document.getElementById("modalLayer")?.classList.contains("hidden")) {
