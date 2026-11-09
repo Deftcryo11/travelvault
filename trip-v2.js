@@ -373,7 +373,8 @@
     }catch(err){modalBusy(false,errorText(err));return;}
     modalBusy(true,"Saving to Supabase...");
     try{
-      await saveRecord(table,trip.id,body,existing);
+      const confirmed = await saveRecord(table,trip.id,body,existing);
+      if (!confirmed) throw Error("Account changed; save confirmation unavailable.");
       closeModal();refreshView();notify("Change confirmed by Supabase.");
     }catch(err){
       modalBusy(false,"Save not confirmed: "+errorText(err)+
@@ -592,7 +593,11 @@
     ))return;
     const type=draft.table===TABLE.expenses?core().expenseInput:core().itineraryInput;
     let clean;try{clean=type(draft.record);}catch(e){return notify(errorText(e));}
-    const original=remote?{id:remote.id,revision:remote.revision}:null;
+    // A recovery of a never-saved item must retain its original ID,
+    // otherwise linked bookings and idempotent retries would break.
+    const original=remote?
+      {id:remote.id,revision:remote.revision}:
+      {id:draft.id,revision:null};
     try{
       // Compare against the revision shown above, not a newer silent refresh.
       await saveRecord(draft.table,draft.tripId,clean,original);
