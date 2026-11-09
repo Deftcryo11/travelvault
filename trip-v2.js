@@ -384,11 +384,6 @@
   }
   async function saveRecord(table,tripId,body,existing=null){
     if(state.writes>0)throw Error("Finish the previous save first.");
-    if(state.drafts.some(x=>x.table===table && x.id!==existing?.id &&
-        x.tripId===tripId)) {
-      // Unresolved drafts are never silently removed; other records may
-      // still be added, but the user must resolve them separately.
-    }
     if(!cloudReady||!cloudUserId||state.account!==cloudUserId||
       state.loadError||state.loading)throw Error("Cloud workspace is not ready.");
     const user=cloudUserId,epoch=state.epoch;
