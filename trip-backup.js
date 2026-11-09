@@ -242,24 +242,32 @@
       const userId = cloudUserId;
       const epoch = cloudEpoch;
       await verifyAccount(userId);
-      // Always read cloud records rather than exporting possibly stale UI state.
-      const { data, error } = await supabaseClient.from("trips")
-        .select("id, trip_data").eq("user_id", userId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+      // Read independently from Supabase, never export stale dashboard caches.
+      const [tripResult,expenseResult,planResult]=await Promise.all([
+        supabaseClient.from("trips").select("id, trip_data")
+          .eq("user_id",userId).order("created_at",{ascending:false}),
+        supabaseClient.from("trip_expenses").select("*")
+          .eq("user_id",userId).order("expense_date",{ascending:false}),
+        supabaseClient.from("trip_plan_items").select("*")
+          .eq("user_id",userId).order("start_date",{ascending:true}),
+      ]);
+      if (tripResult.error || expenseResult.error || planResult.error) {
+        throw tripResult.error||expenseResult.error||planResult.error;
+      }
       if (epoch !== cloudEpoch || cloudUserId !== userId) {
         throw new Error("Account changed during export.");
       }
-      const saved = (data || []).map((row) => validateTrip({
-        ...row.trip_data, id: row.id,
+      const saved=(tripResult.data||[]).map(row=>validateTrip({
+        ...row.trip_data,id:row.id
       }));
-      if (saved.length > MAX_TRIPS) throw new Error("Too many trips to export.");
+      const expenses=(expenseResult.data||[]).map(validateExpense);
+      const plan_items=(planResult.data||[]).map(validatePlan);
+      if(saved.length>MAX_TRIPS||expenses.length>MAX_RECORDS||
+        plan_items.length>MAX_RECORDS)throw Error("Backup exceeds record limits.");
       download({
-        format: FORMAT,
-        created_at: new Date().toISOString(),
-        account_id: userId,
-        trips: saved,
-      }, "voyafundra-all-trips-" + new Date().toISOString().slice(0, 10) + ".json");
+        format:FORMAT,created_at:new Date().toISOString(),
+        account_id:userId,trips:saved,expenses,plan_items
+      },"voyafundra-complete-backup-"+new Date().toISOString().slice(0,10)+".json");
       message.textContent = "Backup download requested. Keep the file private.";
     } catch (error) {
       message.textContent = "Export failed: " + (error.message || String(error));
@@ -270,18 +278,26 @@
 
   function updatePreview() {
     if (!candidate) {
-      preview.textContent = "Choose a Voyafundra full backup to preview its contents.";
-      restoreBtn.disabled = true;
+      preview.textContent="Choose a Voyafundra backup to preview its contents.";
+      restoreBtn.disabled=true;
       return;
     }
-    const existing = new Set(trips.map((item) => item.id));
-    const missing = candidate.trips.filter((item) => !existing.has(item.id));
-    preview.textContent = candidate.trips.length + " trip(s) in backup; " +
-      missing.length + " missing trip(s) eligible to restore. Existing trips " +
-      "will be skipped without overwriting.\n" +
-      missing.map((item) => "• " + item.name + " — " + item.destination)
-        .join("\n");
-    restoreBtn.disabled = !missing.length || !approval.checked || restoring;
+    const currentTrips=new Set(trips.map(x=>x.id));
+    const v2=window.voyafundraV2?.exportRows?.()||{expenses:[],plan_items:[]};
+    const expenseKeys=new Set(v2.expenses.map(x=>x.trip_id+"|"+x.id));
+    const planKeys=new Set(v2.plan_items.map(x=>x.trip_id+"|"+x.id));
+    const missingTrip=candidate.trips.filter(x=>!currentTrips.has(x.id));
+    const missingExpense=candidate.expenses.filter(x=>!expenseKeys.has(x.trip_id+"|"+x.id));
+    const missingPlan=candidate.plan_items.filter(x=>!planKeys.has(x.trip_id+"|"+x.id));
+    preview.textContent =
+      candidate.format+" backup:\n"+
+      candidate.trips.length+" trips ("+missingTrip.length+" possibly missing)\n"+
+      candidate.expenses.length+" expense entries ("+missingExpense.length+" possibly missing)\n"+
+      candidate.plan_items.length+" itinerary entries ("+missingPlan.length+" possibly missing)\n"+
+      "Existing record IDs are never overwritten. Missing records are checked again on Supabase before restore.\n"+
+      missingTrip.map(x=>"• "+x.name+" — "+x.destination).join("\n");
+    restoreBtn.disabled=(!missingTrip.length&&!missingExpense.length&&
+      !missingPlan.length)||!approval.checked||restoring;
   }
 
   async function readFile() {
