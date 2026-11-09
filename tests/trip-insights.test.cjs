@@ -125,3 +125,28 @@ test("checklist starter, toggle, edit, delete actions use the per-trip save path
   assert.equal(t.checklist.some(x=>x.id===id),false);
   assert.ok(events.some(x=>x==="save:a"));
 });
+
+test("international and weekend templates add tasks without duplicating existing ones",()=>{
+ const t={id:"trip-a",checklist:[{id:"existing",title:"Check passport validity",done:true}]};
+ const events=[];let submit;let id=0;
+ const app={
+   generateId(){return "new-"+(++id);},
+   saveTrips(tripId){events.push("save:"+tripId);return Promise.resolve(true);},
+   notify(text){events.push(text);},
+   render(){events.push("render");},
+   selectField(){return "<select name='taskTemplate'></select>";},
+   showModal(_,__,handler){submit=handler;},
+ };
+ ui.handleChecklistAction("checklist-template",t,null,app);
+ assert.equal(submit({taskTemplate:"International travel"}),true);
+ assert.equal(t.checklist.filter(x=>x.title==="Check passport validity").length,1);
+ assert.ok(t.checklist.some(x=>x.title.includes("visa")));
+ assert.ok(t.checklist.some(x=>x.category==="Documents"));
+ assert.ok(events.includes("save:trip-a"));
+ const length=t.checklist.length;
+ assert.equal(submit({taskTemplate:"International travel"}),false);
+ assert.equal(t.checklist.length,length);
+ ui.handleChecklistAction("checklist-template",t,null,app);
+ assert.equal(submit({taskTemplate:"Weekend getaway"}),true);
+ assert.ok(t.checklist.some(x=>x.title==="Pack essentials"));
+});
