@@ -190,6 +190,9 @@
         <button class="nav-link" id="historyNav">
           ◷ <span>Completed trips</span>
         </button>
+        <button class="nav-link" id="settingsNav" type="button">
+          ⚙ <span>Settings &amp; Data</span>
+        </button>
       </aside>
       <main class="main">
         <header class="topbar">
@@ -205,6 +208,8 @@
 
           <div class="topbar-actions">
             <div class="topbar-actions-row" id="accountActions">
+              <button id="mobileSettingsBtn" class="btn btn-outline mobile-settings-btn"
+                type="button" aria-label="Settings and data" title="Settings and data">⚙</button>
               <!-- Theme toggle -->
               <button id="themeToggle" type="button" class="theme-toggle">
                 <span id="themeIcon">🌙</span>
@@ -305,8 +310,8 @@
         <details class="trip-backup-panel" id="tripBackupPanel">
           <summary>Data backup &amp; restore</summary>
           <div class="trip-backup-body">
-            <p>Download a private JSON backup of all saved trips, savings, travel options, and checklists. Keep this file secure.</p>
-            <button type="button" id="exportTripsBtn" class="btn btn-outline">Download all trips</button>
+            <p>Download a private Version 2 JSON backup of trips, savings, expenses, itineraries, bookings and checklists. Version 1 files are still accepted for restoration. Keep this file secure.</p>
+            <button type="button" id="exportTripsBtn" class="btn btn-outline">Download complete backup</button>
             <div class="field full">
               <label for="importTripsFile">Restore a Voyafundra full backup</label>
               <input id="importTripsFile" type="file" accept=".json,application/json" />
