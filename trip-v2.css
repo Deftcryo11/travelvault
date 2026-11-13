@@ -89,3 +89,29 @@
   .checklist-item.vf2-overdue{border-left:3px solid var(--negative);padding-left:8px}
 }
 @media(min-width:701px){.checklist-item.vf2-overdue{border-left:3px solid var(--negative);padding-left:8px}}
+
+
+/* USD savings wallet: separate currency holdings and historical purchases. */
+.vf2-usd-wallet .vf2-saver-list { margin: 15px 0 20px; }
+.vf2-usd-wallet .vf2-saver {
+  background: var(--surface-alt);
+  border-left: 3px solid var(--primary);
+}
+.vf2-usd-wallet h3 { margin-top: 14px; }
+.vf2-usd-wallet .vf2-record-right strong { font-variant-numeric: tabular-nums; }
+.vf2-usd-preview {
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-alt);
+  color: var(--text);
+  border-radius: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .vf2-usd-wallet .vf2-metrics { gap: 8px; }
+  .vf2-usd-wallet .vf2-record { gap: 12px; }
+  .vf2-usd-preview { font-size: 13px; }
+}
