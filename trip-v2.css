@@ -115,3 +115,18 @@
   .vf2-usd-wallet .vf2-record { gap: 12px; }
   .vf2-usd-preview { font-size: 13px; }
 }
+
+
+.vf2-trip-currency {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  margin: 12px 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.vf2-trip-currency strong { color: var(--text); font-variant-numeric: tabular-nums; }
