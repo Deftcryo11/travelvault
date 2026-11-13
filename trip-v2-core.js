@@ -139,6 +139,82 @@
     const pad = n=>String(n).padStart(2,"0");
     return date.getFullYear()+"-"+pad(date.getMonth()+1)+"-"+pad(date.getDate());
   }
+  // USD is purchased *from* already-recorded MVR savings. Every exchange
+  // retains its own historical rate. Purchasing USD is neither new saving
+  // nor a trip expense, so the goal progress must not count it twice.
+  function usdPurchaseInput(form) {
+    const purchaseDate = str(form.purchaseDate,10);
+    if (!dateValid(purchaseDate)) throw Error("Choose a valid USD purchase date.");
+    const personId = str(form.personId,150);
+    if (!personId || !/^[a-zA-Z0-9_.-]{1,150}$/.test(personId))
+      throw Error("Choose the saver who purchased USD.");
+    const note = str(form.note,250);
+    const amount = Number(form.usdAmount);
+    if (!Number.isFinite(amount) || amount<=0 || amount>1e7 ||
+        String(form.usdAmount??"").trim()==="")
+      throw Error("Enter a positive USD amount.");
+    const usdAmount = round(amount);
+    if (usdAmount<=0 || Math.abs(amount-usdAmount)>0.0000001)
+      throw Error("USD amount must have no more than two decimal places.");
+    const bankRate=Number(form.mvrPerUsd);
+    if(!Number.isFinite(bankRate)||bankRate<=0||bankRate>1e6||
+       String(form.mvrPerUsd??"").trim()==="")
+      throw Error("Enter a positive bank rate in MVR per USD.");
+    const mvrPerUsd=Math.round(bankRate*1e6)/1e6;
+    if(mvrPerUsd<=0)throw Error("Bank rate is too small.");
+    const mvrCost=round(usdAmount*mvrPerUsd);
+    if (mvrCost<=0||mvrCost>1e9)
+      throw Error("The MVR cost must be positive and within limits.");
+    return {purchaseDate,personId,usdAmount,mvrPerUsd,mvrCost,note};
+  }
+
+  function usdSavingsWallet(trip) {
+    const savings=saverForecast(trip);
+    const purchases=Array.isArray(trip?.usdPurchases)?trip.usdPurchases:[];
+    const people=new Map(savings.people.map(p=>[p.id,{
+      id:p.id,name:p.name,savedMvr:round(p.saved),
+      mvrConvertedCents:0,usdCents:0
+    }]));
+    let convertedCents=0,usdCents=0;
+    for (const purchase of purchases) {
+      if (!people.has(purchase.personId)) {
+        throw Error("A USD purchase refers to a missing saver. Restore that saver before editing.");
+      }
+      const usd=Math.round(Number(purchase.usdAmount)*100);
+      const spent=Math.round(Number(purchase.mvrCost)*100);
+      if(!Number.isSafeInteger(usd)||usd<=0||!Number.isSafeInteger(spent)||spent<=0)
+        throw Error("A USD purchase has invalid saved amounts.");
+      const person=people.get(purchase.personId);
+      person.usdCents+=usd;
+      person.mvrConvertedCents+=spent;
+      convertedCents+=spent;usdCents+=usd;
+    }
+    return {
+      contributedMvr:round(savings.totalSaved),
+      mvrConverted:round(convertedCents/100),
+      mvrAvailable:round(savings.totalSaved-convertedCents/100),
+      usdHeld:round(usdCents/100),
+      effectiveRate:usdCents?round(convertedCents/usdCents):null,
+      purchases:purchases.length,
+      people:[...people.values()].map(p=>({
+        id:p.id,name:p.name,savedMvr:p.savedMvr,
+        mvrConverted:round(p.mvrConvertedCents/100),
+        mvrAvailable:round(p.savedMvr-p.mvrConvertedCents/100),
+        usdHeld:round(p.usdCents/100),
+      }))
+    };
+  }
+
+  function ensureUsdSavingsCovered(trip) {
+    const wallet=usdSavingsWallet(trip);
+    const overdrawn=wallet.people.find(p=>p.mvrAvailable < -0.001);
+    if(overdrawn)throw Error(
+      overdrawn.name+" has bought more USD than their recorded MVR savings cover. "+
+      "Increase their saved MVR or edit their USD purchases first."
+    );
+    return wallet;
+  }
+
   function expenseSummary(expenses,budget) {
     const rows=Array.isArray(expenses)?expenses:[];
     let spentCents=0, plannedCents=0, refundsCents=0;
@@ -203,7 +279,8 @@
   }
   window.voyafundraV2Core={
     CATEGORIES,KINDS,STATUSES,expenseInput,itineraryInput,
-    saverForecast,expenseSummary,categoryBudgets,groupItinerary,
+    saverForecast,usdPurchaseInput,usdSavingsWallet,ensureUsdSavingsCovered,
+    expenseSummary,categoryBudgets,groupItinerary,
     checklistUpcoming,dateValid,localDate,csvSafe,round
   };
 })();
