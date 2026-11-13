@@ -194,7 +194,7 @@
       mvrConverted:round(convertedCents/100),
       mvrAvailable:round(savings.totalSaved-convertedCents/100),
       usdHeld:round(usdCents/100),
-      effectiveRate:usdCents?round(convertedCents/usdCents):null,
+      effectiveRate:usdCents?Math.round(convertedCents/usdCents*10000)/10000:null,
       purchases:purchases.length,
       people:[...people.values()].map(p=>({
         id:p.id,name:p.name,savedMvr:p.savedMvr,
