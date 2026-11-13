@@ -83,6 +83,38 @@ should start from an updated beta preview version.
   verify order/overdue highlighting after refresh.
 - Confirm the existing standalone savings editor remains available.
 
+### Stage D2 — USD savings conversion ledger
+
+- Use a disposable trip with MVR 8,000 already recorded as savings.
+  Purchase USD 200 at MVR 15.40/USD. Expected: MVR 3,080 exchanged,
+  MVR 4,920 still available, USD 200 held, goal progress unchanged.
+- Purchase another USD 50 at MVR 15.70. Expected: MVR 3,865 total
+  exchanged, MVR 4,135 available, USD 250 held; the first rate remains
+  15.40 and the weighted historical rate is 15.46.
+- Verify purchases are assigned to the correct saver and cannot exceed that
+  saver's recorded MVR contributions (even if another saver has funds).
+- Edit and delete one purchase. Check USD holdings and MVR balances
+  recalculate without changing the other purchase's rate.
+- Reduce or delete a monthly MVR savings entry used to buy USD. The app
+  must block an overdraft and explain which saver needs more savings.
+- Remove a saver with USD purchases. The editor must block this until
+  their conversion transactions are removed or reassigned.
+- Check the trip list, trip overview, Savings tab, JSON trip report and
+  printable report all distinguish MVR available, USD held and total
+  recorded savings. USD conversion must not count as trip spending.
+- Export and preview a Version 2 full backup. Verify every purchase's
+  amount, date, saver, rate and MVR cost are preserved and tampered rates
+  or unsupported duplicate IDs are rejected.
+- Repeat on PC and iPhone, including a stale cross-device purchase edit;
+  the trip revision guard must prevent replacing a newer cloud copy.
+
+Implementation: USD purchases are in each trip's `trip_data.usdPurchases`
+JSON array. This uses the existing trip-level server revision and does not
+require a new Supabase table or schema migration. Rates are entered manually
+for each conversion and never retroactively updated. No new money is created
+or spent: saved value at historical cost is simply divided between MVR cash
+and purchased USD.
+
 ### Stage E — Full backups, recovery and security
 
 - Download a **private v2 JSON full backup** and confirm it has \`trips\`,
