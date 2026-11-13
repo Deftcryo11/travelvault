@@ -1768,7 +1768,8 @@ function tripForm(existing = null) {
       monthCount,
       notes: data.notes.trim(),
       options: existing?.options || [],
-      savings: existing?.savings || [],
+      savings: existing?.savings
+        ? JSON.parse(JSON.stringify(existing.savings)) : [],
       checklist: existing?.checklist || [],
       createdAt: existing?.createdAt || new Date().toISOString(),
     };
@@ -1817,6 +1818,21 @@ function tripForm(existing = null) {
           }
         }
       }
+    }
+
+    // A saver who owns USD savings must not be removed by editing the roster.
+    // A reduction in recorded MVR must never leave USD purchases unfunded.
+    try {
+      if ((existing?.usdPurchases || []).some(purchase =>
+        !savers.some(person => person.id === purchase.personId))) {
+        throw new Error(
+          "A saver has USD purchases. Delete or reassign those purchases before removing them."
+        );
+      }
+      window.voyafundraV2Core?.ensureUsdSavingsCovered(updated);
+    } catch (error) {
+      notify(error.message);
+      return false;
     }
 
     if (existing) {
@@ -2092,6 +2108,20 @@ function savingsForm(existing = null) {
         month: data.month.trim(),
         contributions,
       };
+
+      // Do not allow an edited savings month to reduce the saver’s balance
+      // below MVR already exchanged for USD at historical purchase rates.
+      try {
+        const newSavings=existing
+          ? trip.savings.map(row => row.id === existing.id ? updated : row)
+          : [...trip.savings, updated];
+        window.voyafundraV2Core?.ensureUsdSavingsCovered({
+          ...trip, savings:newSavings
+        });
+      } catch(error) {
+        notify(error.message);
+        return false;
+      }
 
       if (existing) {
         Object.assign(existing, updated);
@@ -2420,6 +2450,14 @@ $("#appContent").addEventListener("click", (event) => {
 
     case "delete-saving":
       if (!trip) break;
+      try {
+        window.voyafundraV2Core?.ensureUsdSavingsCovered({
+          ...trip, savings: trip.savings.filter((row) => row.id !== id)
+        });
+      } catch (error) {
+        notify(error.message);
+        break;
+      }
 
       confirmRemove("Delete this monthly savings entry?", () => {
         trip.savings = trip.savings.filter((row) => row.id !== id);
