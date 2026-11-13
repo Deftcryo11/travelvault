@@ -16,6 +16,9 @@
     '<button type="button" class="btn btn-small '+kind+
     '" data-vf2-action="'+action+'"'+(id?' data-vf2-id="'+h(id)+'"':'')+
     '>'+h(title)+'</button>';
+  const usd=n=>"USD "+Number(n||0).toLocaleString("en-US",{
+    minimumFractionDigits:2,maximumFractionDigits:2
+  });
   const TABLE={expenses:"trip_expenses",plan:"trip_plan_items"};
   const state={
     account:null,epoch:0,expenses:[],plans:[],drafts:[],
@@ -98,6 +101,7 @@
     const expenses=scoped(TABLE.expenses,trip.id);
     const plan=scoped(TABLE.plan,trip.id);
     const money=core().expenseSummary(expenses,trip.budget);
+    const wallet=core().usdSavingsWallet(trip);
     const checklist=core().checklistUpcoming(trip);
     const next=core().groupItinerary(plan.filter(x=>x.booking_status!=="cancelled"&&
       x.start_date>=core().localDate()))[0]?.items?.[0];
@@ -108,6 +112,10 @@
       card("Planned expenses",m(money.planned),"Not yet paid")+
       card("Upcoming bookings",plan.filter(x=>x.start_date>=core().localDate()&&
         x.booking_status==="confirmed").length,"Confirmed future itinerary items")+
+      (wallet.purchases?
+        card("Available MVR savings",m(wallet.mvrAvailable),"After buying USD")+
+        card("USD held",usd(wallet.usdHeld),"Purchased with recorded savings"):
+        "")+
       '</div><div class="vf2-overview-grid">'+
       '<div class="vf2-summary"><h3>Next itinerary item</h3><p>'+
       (next?h(next.start_date+' · '+(next.start_time||"")+' '+next.title):
@@ -160,6 +168,47 @@
       }).join("")+'</div>':'<p class="vf2-empty">No expenses recorded yet. Estimates in travel options are not actual spending.</p>')+
       '</section>';
   }
+  function usdWalletSection(trip) {
+    const wallet=core().usdSavingsWallet(trip);
+    const people=new Map(wallet.people.map(p=>[p.id,p.name]));
+    const purchases=(Array.isArray(trip.usdPurchases)?trip.usdPurchases:[])
+      .slice().sort((a,b)=>b.purchaseDate.localeCompare(a.purchaseDate));
+    return '<section class="panel vf2-section vf2-usd-wallet">'+
+      '<div class="panel-head"><div><h2>USD savings purchases</h2>'+
+      '<p>Buy USD using saved MVR at the bank rate actually paid.</p></div>'+
+      button("usd-buy","+ Record USD purchase","btn-primary")+'</div>'+
+      '<div class="vf2-metrics">'+
+      card("MVR available",m(wallet.mvrAvailable),"Cash savings after USD purchases")+
+      card("USD held",usd(wallet.usdHeld),"Dollars bought and saved")+
+      card("MVR exchanged",m(wallet.mvrConverted),"Total paid across purchases")+
+      card("Effective average rate",wallet.effectiveRate===null?"—":
+        wallet.effectiveRate.toFixed(4)+" MVR/USD","Historical purchase cost / USD held")+
+      '</div><p class="vf2-hint">Buying USD moves money from your MVR savings '+
+      'into USD savings. It does not increase total savings, change your savings '+
+      'goal progress or count as a trip expense. Every purchase keeps its own rate.</p>'+
+      (wallet.people.length?'<div class="vf2-saver-list">'+wallet.people.map(p=>
+        '<div class="vf2-saver"><div><strong>'+h(p.name)+'</strong>'+
+        '<small>MVR left: '+h(m(p.mvrAvailable))+'</small></div>'+
+        '<div><strong>'+h(usd(p.usdHeld))+'</strong>'+
+        '<small>Cost: '+h(m(p.mvrConverted))+' from '+h(m(p.savedMvr))+
+        ' recorded savings</small></div></div>').join("")+'</div>':"")+
+      '<h3>Purchase history</h3>'+
+      (purchases.length?'<div class="vf2-record-list">'+purchases.map(p=>
+        '<article class="vf2-record"><div><h3>'+
+        h(usd(p.usdAmount))+' · '+h(people.get(p.personId)||"Unknown saver")+
+        '</h3><p>'+h(p.purchaseDate)+' · '+h(Number(p.mvrPerUsd).toFixed(4))+
+        ' MVR per USD</p>'+
+        (p.note?'<small>'+h(p.note)+'</small>':"")+
+        '</div><div class="vf2-record-right"><small>MVR deducted</small>'+
+        '<strong>'+h(m(p.mvrCost))+'</strong>'+
+        '<div class="vf2-actions">'+button("usd-edit","Edit","btn-outline",p.id)+
+        button("usd-delete","Delete","btn-outline",p.id)+
+        '</div></div></article>').join("")+'</div>':
+        '<p class="vf2-empty">No USD purchases recorded yet. '+
+        'Add money to your monthly MVR savings before buying dollars.</p>')+
+      '</section>';
+  }
+
   function savingsSection(trip){
     const info=core().saverForecast(trip);
     return '<section class="panel vf2-section"><div class="panel-head"><div>'+
@@ -175,7 +224,8 @@
         '<small>Monthly target · projected additional '+h(m(p.projectedAdditional))+
         '</small></div></div>').join("")+'</div>':
         '<p class="vf2-empty">Add people saving for this trip to see individual progress.</p>')+
-      '<p class="vf2-hint">Forecasts are estimates based on entered monthly targets; they are not actual account balances.</p></section>';
+      '<p class="vf2-hint">Forecasts are estimates based on entered monthly targets; they are not actual account balances.</p></section>'+
+      usdWalletSection(trip);
   }
   function itinerarySection(trip){
     const rows=scoped(TABLE.plan,trip.id);
@@ -288,6 +338,90 @@
     root.querySelectorAll("[data-vf2-panel]").forEach(panel=>{
       panel.hidden=panel.dataset.vf2Panel!==state.tab;
     });
+  }
+
+  function usdPurchaseForm(trip,existing=null) {
+    if(!canStartTripEdit(trip.id))return;
+    const wallet=core().usdSavingsWallet(trip);
+    if(wallet.people.length===0)return notify("Add a saver before recording USD.");
+    if(!existing && !wallet.people.some(p=>p.mvrAvailable>0))
+      return notify("Record MVR savings first; there is no available MVR to exchange.");
+    const options=wallet.people.map(p=>
+      '<option value="'+h(p.id)+'"'+
+      ((existing?.personId||wallet.people[0].id)===p.id?' selected':'')+
+      '>'+h(p.name)+'</option>').join("");
+    const body=field("purchaseDate","Purchase date",
+      existing?.purchaseDate||core().localDate(),"date",{required:true})+
+      '<div class="field"><label for="vf2-usd-person">Purchased by saver</label>'+
+      '<select id="vf2-usd-person" name="personId" required>'+options+
+      '</select></div>'+
+      field("usdAmount","USD bought",existing?.usdAmount??"","number",
+        {required:true,placeholder:"e.g. 200"})+
+      field("mvrPerUsd","Bank rate (MVR per 1 USD)",
+        existing?.mvrPerUsd??"","number",{required:true,placeholder:"e.g. 15.42"})+
+      field("note","Note (optional)",existing?.note||"","text",
+        {full:true,placeholder:"e.g. Good bank rate"})+
+      '<p class="vf2-usd-preview" id="vf2-usd-preview" role="status" aria-live="polite">'+
+      'Enter USD and the bank rate to see the MVR deduction.</p>'+
+      '<p class="vf2-hint">Each transaction keeps its original bank rate. '+
+      'The MVR paid will be removed from this saver’s available MVR savings; '+
+      'your recorded monthly contribution total stays unchanged.</p>';
+    showModal(existing?"Edit USD purchase":"Record USD purchase",body,data=>{
+      let purchase;
+      try {
+        purchase=core().usdPurchaseInput(data);
+        const current=Array.isArray(trip.usdPurchases)?trip.usdPurchases:[];
+        if(current.length>=250&&!existing)
+          throw Error("Maximum 250 USD purchases per trip.");
+        const replacement={...purchase,id:existing?.id||generateId()};
+        const candidate=existing?
+          current.map(row=>row.id===existing.id?replacement:row):
+          current.concat(replacement);
+        core().ensureUsdSavingsCovered({...trip,usdPurchases:candidate});
+        trip.usdPurchases=candidate;
+        saveTrips(trip.id);
+        notify("USD purchase queued. Check cloud save confirmation.");
+        return true;
+      } catch(err) {
+        notify(errorText(err));
+        return false;
+      }
+    });
+    const preview=document.getElementById("vf2-usd-preview");
+    const update=()=>{
+      const form=document.getElementById("activeForm");
+      if(!form||!preview)return;
+      const row=Object.fromEntries(new FormData(form).entries());
+      const previous=existing?.mvrCost||0;
+      const saver=wallet.people.find(p=>p.id===row.personId);
+      const available=(saver?.mvrAvailable||0)+
+        (existing?.personId===row.personId?previous:0);
+      const amount=Number(row.usdAmount),rate=Number(row.mvrPerUsd);
+      if(!(amount>0&&rate>0)){
+        preview.textContent="Enter USD and bank rate to calculate the MVR deduction.";
+        return;
+      }
+      const cost=core().round(amount*rate);
+      preview.textContent="MVR to deduct: "+m(cost)+
+        " · Saver's available MVR: "+m(available)+
+        (cost>available+0.005?" · Insufficient MVR savings":"");
+    };
+    document.getElementById("activeForm")?.addEventListener("input",update);
+    document.getElementById("activeForm")?.addEventListener("change",update);
+    update();
+  }
+
+  function deleteUsdPurchase(trip,id){
+    if(!canStartTripEdit(trip.id))return;
+    const purchases=Array.isArray(trip.usdPurchases)?trip.usdPurchases:[];
+    const purchase=purchases.find(x=>x.id===id);
+    if(!purchase)return;
+    if(!window.confirm("Delete this USD purchase? Its MVR cost will return "+
+      "to available savings and its USD amount will be removed. Continue?"))return;
+    trip.usdPurchases=purchases.filter(x=>x.id!==id);
+    saveTrips(trip.id);
+    notify("USD purchase deletion queued. Check cloud save confirmation.");
+    render();
   }
 
   function expenseForm(trip,existing=null){
@@ -497,6 +631,7 @@
     const itinerary=scoped(TABLE.plan,trip.id);
     const summary=core().expenseSummary(expenses,trip.budget);
     const savings=core().saverForecast(trip);
+    const usdWallet=core().usdSavingsWallet(trip);
     const check=core().checklistUpcoming(trip);
     return {
       format:"voyafundra-trip-report-v2",
@@ -504,7 +639,9 @@
       trip:{id:trip.id,name:trip.name,destination:trip.destination,
         departure:trip.departure,returnDate:trip.returnDate,status:trip.status,
         budget:trip.budget},
-      finance:summary,savings,expense_count:expenses.length,
+      finance:summary,savings,usdWallet,
+      usdPurchases:Array.isArray(trip.usdPurchases)?trip.usdPurchases:[],
+      expense_count:expenses.length,
       expenses:expenses.map(x=>({...x})),
       itinerary:itinerary.map(x=>({...x})),
       checklist:Array.isArray(trip.checklist)?trip.checklist:[],
@@ -519,6 +656,8 @@
       h(trip.destination)+' · '+h(trip.departure)+' to '+h(trip.returnDate)+'</p>'+
       '<h2>Financial summary</h2><p>Budget: '+h(m(trip.budget))+
       ' · Saved: '+h(m(info.savings.totalSaved))+
+      ' · MVR cash: '+h(m(info.usdWallet.mvrAvailable))+
+      ' · USD held: '+h(usd(info.usdWallet.usdHeld))+
       ' · Actual spent: '+h(m(info.finance.spent))+
       ' · Remaining: '+h(m(info.finance.remaining))+'</p>'+
       '<h2>Expenses</h2>'+info.expenses.map(x=>
@@ -638,7 +777,11 @@
     if(action==="draft-discard")return;
     if(!trip)return;
     if(!canStartTripEdit(trip.id)&&
-      /^(expense|plan|category)/.test(action))return;
+      /^(expense|plan|category|usd-)/.test(action))return;
+    if(action==="usd-buy")return usdPurchaseForm(trip);
+    if(action==="usd-edit")return usdPurchaseForm(trip,
+      (trip.usdPurchases||[]).find(x=>x.id===id));
+    if(action==="usd-delete")return deleteUsdPurchase(trip,id);
     if(action==="expense-new")return expenseForm(trip);
     if(action==="expense-edit")return expenseForm(trip,
       scoped(TABLE.expenses,trip.id).find(x=>x.id===id));
