@@ -214,6 +214,10 @@ async function loadCloudTrips(user) {
         : "Trips up to date"
   );
 
+  if (window.voyafundraV2?.load) {
+    await window.voyafundraV2.load(user.id);
+    if (epoch !== cloudEpoch) return false;
+  }
   render();
 
   return true;
@@ -230,7 +234,7 @@ async function refreshCloudTripsSafely(userId, options = {}) {
   const discardUnsaved = options.discardUnsaved === true;
   if (!cloudReady || !cloudUserId || cloudUserId !== userId ||
       cloudWritesPending > 0 || cloudRecoveryPendingDrafts.length ||
-      cloudRecoveryReadError ||
+      cloudRecoveryReadError || window.voyafundraV2?.status().unconfirmed ||
       (!discardUnsaved && (cloudSaveError || cloudUnsavedTripIds.size))) {
     throw new Error("Finish or resolve unsaved changes before refreshing.");
   }
@@ -277,6 +281,7 @@ async function refreshCloudTripsSafely(userId, options = {}) {
   }
   selectedTripId = null;
   currentView = "all";
+  await window.voyafundraV2?.load?.(userId);
   render();
   window.voyafundraUX?.setStatus("saved", "Trips refreshed from the cloud");
   return true;
@@ -385,6 +390,7 @@ function canStartTripEdit(tripId = null) {
  */
 function clearCloudTrips() {
   cloudEpoch++;
+  window.voyafundraV2?.reset?.();
 
   cloudUserId = null;
   cloudReady = false;
@@ -767,6 +773,18 @@ function tripCard(trip) {
 
       ${window.voyafundraFeatures?.cardCountdown(trip) || ''}
 
+      ${(trip.usdPurchases || []).length
+        ? (() => {
+            const wallet = window.voyafundraV2Core?.usdSavingsWallet(trip);
+            return wallet
+              ? `<div class="vf2-trip-currency">
+                  <span>Available MVR: <strong>${money(wallet.mvrAvailable)}</strong></span>
+                  <span>USD held: <strong>USD ${wallet.usdHeld.toFixed(2)}</strong></span>
+                </div>`
+              : "";
+          })()
+        : ""}
+
       ${progressBar(progress)}
 
       <div class="progress-caption">
@@ -784,18 +802,49 @@ function updateNavigation() {
   $("#allTripsNav").classList.toggle("active", currentView === "all");
 
   $("#historyNav").classList.toggle("active", currentView === "history");
+  $("#settingsNav").classList.toggle("active", currentView === "settings");
 }
 
 function render() {
   updateNavigation();
-
+  if (currentView === "settings") {
+    selectedTripId = null;
+    renderSettings();
+    return;
+  }
   if (selectedTripId && getSelectedTrip()) {
     renderTripDetails();
+    window.voyafundraV2?.enhanceTrip?.(getSelectedTrip());
     return;
   }
 
   selectedTripId = null;
   renderTripList();
+  window.voyafundraV2?.enhanceList?.();
+}
+
+function renderSettings() {
+  $("#pageTitle").textContent = "Settings & Data";
+  $("#pageSubtitle").textContent =
+    "Manage your appearance, backups, sessions and cloud workspace.";
+  $("#appContent").innerHTML =
+    '<section class="panel vf2-section">'+
+    '<h2>Appearance</h2><p>Voyafundra follows your device theme by default. '+
+    'Use the existing theme control to switch between Light and Dark Mode.</p>'+
+    '<div class="vf2-toolbar"><button type="button" class="btn btn-outline" '+
+    'data-action="settings-theme">Toggle app theme</button></div></section>'+
+    '<section class="panel vf2-section"><h2>Data backup &amp; restore</h2>'+
+    '<p>Export a private Version 2 backup of trips, savings, expenses and bookings. '+
+    'Restore always previews first and never overwrites an existing record.</p>'+
+    '<div class="vf2-toolbar"><button type="button" class="btn btn-primary" '+
+    'data-action="settings-backup">Open backup &amp; restore</button>'+
+    '<button type="button" class="btn btn-outline" '+
+    'data-action="settings-refresh">Refresh saved trips</button></div></section>'+
+    '<section class="panel vf2-section"><h2>Privacy &amp; account</h2>'+
+    '<p>Emergency drafts are stored in this browser and are not encrypted. '+
+    'Use a trusted personal device. Logout is guarded when unsaved data remains.</p>'+
+    '<div class="vf2-toolbar"><button type="button" class="btn btn-outline" '+
+    'data-action="settings-logout">Log out safely</button></div></section>';
 }
 
 /* ==========================================
@@ -1375,7 +1424,7 @@ function renderSavingsTracker(trip) {
 
   html += `
     <div class="rate-info">
-      Savings remaining:
+      Savings target still to reach:
       <strong>
         ${money(Math.max(0, num(trip.budget) - totalSaved(trip)))}
       </strong>.
@@ -1517,6 +1566,10 @@ function showModal(title, body, onSubmit) {
 }
 
 function closeModal() {
+  if (window.voyafundraV2?.status?.().writes > 0) {
+    notify("Wait for the current expense or itinerary save to finish.");
+    return;
+  }
   window.voyafundraCalendar?.closeAll();
   $("#modalLayer").classList.add("hidden");
   $("#modalBody").innerHTML = "";
@@ -1727,7 +1780,8 @@ function tripForm(existing = null) {
       monthCount,
       notes: data.notes.trim(),
       options: existing?.options || [],
-      savings: existing?.savings || [],
+      savings: existing?.savings
+        ? JSON.parse(JSON.stringify(existing.savings)) : [],
       checklist: existing?.checklist || [],
       createdAt: existing?.createdAt || new Date().toISOString(),
     };
@@ -1776,6 +1830,21 @@ function tripForm(existing = null) {
           }
         }
       }
+    }
+
+    // A saver who owns USD savings must not be removed by editing the roster.
+    // A reduction in recorded MVR must never leave USD purchases unfunded.
+    try {
+      if ((existing?.usdPurchases || []).some(purchase =>
+        !savers.some(person => person.id === purchase.personId))) {
+        throw new Error(
+          "A saver has USD purchases. Delete or reassign those purchases before removing them."
+        );
+      }
+      window.voyafundraV2Core?.ensureUsdSavingsCovered(updated);
+    } catch (error) {
+      notify(error.message);
+      return false;
     }
 
     if (existing) {
@@ -2052,6 +2121,20 @@ function savingsForm(existing = null) {
         contributions,
       };
 
+      // Do not allow an edited savings month to reduce the saver’s balance
+      // below MVR already exchanged for USD at historical purchase rates.
+      try {
+        const newSavings=existing
+          ? trip.savings.map(row => row.id === existing.id ? updated : row)
+          : [...trip.savings, updated];
+        window.voyafundraV2Core?.ensureUsdSavingsCovered({
+          ...trip, savings:newSavings
+        });
+      } catch(error) {
+        notify(error.message);
+        return false;
+      }
+
       if (existing) {
         Object.assign(existing, updated);
       } else {
@@ -2220,6 +2303,12 @@ $("#historyNav").addEventListener("click", () => {
 
   render();
 });
+$("#settingsNav").addEventListener("click", () => {
+  selectedTripId = null;
+  currentView = "settings";
+  render();
+});
+$("#mobileSettingsBtn").addEventListener("click", () => $("#settingsNav").click());
 
 /* ==========================================
    MODAL - SAFE OUTSIDE CLICK HANDLING
@@ -2281,12 +2370,26 @@ $("#appContent").addEventListener("click", (event) => {
 
   if (action.startsWith("checklist-")) {
     if (trip) window.voyafundraFeatures?.handleChecklistAction(action, trip, id, {
-      field, showModal, saveTrips, notify, render, generateId, confirmRemove,
+      field, selectField, showModal, saveTrips, notify, render, generateId, confirmRemove,
     });
     return;
   }
 
   switch (action) {
+    case "settings-theme":
+      $("#themeToggle").click();
+      break;
+    case "settings-backup": {
+      const backup = $("#tripBackupPanel");
+      if (backup) {backup.open = true; backup.scrollIntoView({behavior:"smooth"});}
+      break;
+    }
+    case "settings-refresh":
+      $("#refreshTripsBtn").click();
+      break;
+    case "settings-logout":
+      $("#logoutBtn").click();
+      break;
     case "new":
       tripForm();
       break;
@@ -2312,6 +2415,10 @@ $("#appContent").addEventListener("click", (event) => {
 
     case "delete-trip":
       if (!trip) break;
+      if (window.voyafundraV2?.status().unconfirmed) {
+        notify("Resolve unconfirmed expense and itinerary drafts before deleting this trip.");
+        break;
+      }
 
       confirmRemove(
         `Permanently delete "${trip.name}" and all its data?`,
@@ -2355,6 +2462,14 @@ $("#appContent").addEventListener("click", (event) => {
 
     case "delete-saving":
       if (!trip) break;
+      try {
+        window.voyafundraV2Core?.ensureUsdSavingsCovered({
+          ...trip, savings: trip.savings.filter((row) => row.id !== id)
+        });
+      } catch (error) {
+        notify(error.message);
+        break;
+      }
 
       confirmRemove("Delete this monthly savings entry?", () => {
         trip.savings = trip.savings.filter((row) => row.id !== id);

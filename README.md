@@ -11,7 +11,21 @@ Voyafundra is a responsive travel budget, savings and checklist planner. The fro
 - Countdown to each trip's departure date, using the device's calendar date.
 - Editable per-trip travel checklists with completion state and optional due dates.
 - Theme-aware date/month pickers, device theme support and responsive iPhone PWA layout.
-- Full-account JSON backup export and a preview-based, create-only restore for missing trips.
+- Actual expense tracking: paid, planned and refunded entries, MVR/USD conversion
+  with saved bank-rate snapshots, category allocations, and expense CSV exports.
+- Trip itineraries and bookings with day-by-day plans, provider references,
+  local travel times, confirmation status and costs kept separate from spending.
+- USD savings purchases: buy dollars from already-recorded MVR savings at
+  a manually entered bank rate on each transaction. A saver’s available MVR
+  decreases by USD bought × its own stored rate, and USD held increases.
+  Conversion is **not** extra savings or a trip expense. Purchase history
+  supports editing/deletion, preserves different exchange rates, and is
+  included in full backups and trip reports.
+- Saved-by-person forecasts and reusable travel checklist templates with
+  categories, priorities and overdue indicators.
+- Per-trip printable/JSON reports and a Settings & Data screen.
+- Version 2 full-account JSON backup of trips, expenses and itinerary records,
+  with create-only restoration and support for earlier Version 1 files.
 - Independent trip saves, server-managed revision checks, unsaved-edit review and local recovery drafts.
 
 ## Getting started
@@ -63,7 +77,10 @@ Vercel hosts deployments and Supabase handles authenticated data. Use disposable
 - No fully supported offline synchronization.
 - No automatic field-by-field merge of simultaneous trip changes.
 - Recovery drafts on a device are not synchronized across devices.
-- Full-backup restore only inserts missing trips and does not replace existing trips.
+- Full-backup restore inserts only missing trips, expenses and itinerary records;
+  it does not replace existing records and may be partially completed if interrupted.
 - A backup belongs to the account from which it was exported.
+
+Full Voyafundra 2.0 test and release gates are in `docs/v2-release-checklist.md`.
 
 More detail is in docs/data-protection-foundation.md and docs/trip-revisions.md.

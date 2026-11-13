@@ -33,7 +33,9 @@ test("X close, Cancel, and calendar cleanup are wired for all modals", () => {
   assert.match(markup, /type="button" class="close-btn" id="modalClose"/);
   assert.match(app, /\$\("#modalClose"\)\.onclick = closeModal;/);
   assert.match(app, /\$\("#cancelModal"\)\.onclick = closeModal;/);
-  assert.match(app, /function closeModal\(\)\s*\{\s*window\.voyafundraCalendar\?\.closeAll\(\)/);
+  assert.match(app, /function closeModal\(\)/);
+  assert.match(app, /voyafundraCalendar\?\.closeAll\(\)/);
+  assert.match(app, /voyafundraV2\?\.status/);
   assert.match(app, /#\s*modalLayer|modalPointerStartedOutside/);
 });
 

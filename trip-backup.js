@@ -18,8 +18,10 @@
   if (!panel || !exportBtn || !importInput || !restoreBtn || !preview ||
       !message || !approval) return;
 
-  const FORMAT = "voyafundra-trip-backup-v1";
-  const MAX_FILE_BYTES = 8 * 1024 * 1024;
+  const FORMAT = "voyafundra-trip-backup-v2";
+  const LEGACY_FORMAT = "voyafundra-trip-backup-v1";
+  const MAX_FILE_BYTES = 12 * 1024 * 1024;
+  const MAX_RECORDS = 1000;
   const MAX_TRIPS = 120;
   let restoring = false;
   let candidate = null;
@@ -92,11 +94,33 @@
       };
     });
     if (savings.length > 120) throw new Error("Too many savings entries.");
+    const usdPurchases = (Array.isArray(t.usdPurchases) ? t.usdPurchases : [])
+      .map((purchase) => {
+        if(!purchase || !validId(purchase.id)) {
+          throw new Error("Invalid USD savings purchase ID.");
+        }
+        if(!window.voyafundraV2Core?.usdPurchaseInput) {
+          throw new Error("USD savings validation is unavailable.");
+        }
+        const parsed=window.voyafundraV2Core.usdPurchaseInput(purchase);
+        if(!Number.isFinite(Number(purchase.mvrCost)) ||
+           Math.abs(Number(purchase.mvrCost)-parsed.mvrCost)>0.005) {
+          throw new Error("Backup USD purchase MVR cost does not match its saved rate.");
+        }
+        return {id:purchase.id,...parsed};
+      });
+    if (usdPurchases.length > 250 ||
+        new Set(usdPurchases.map(item => item.id)).size !== usdPurchases.length) {
+      throw new Error("Backup has too many or duplicate USD purchases.");
+    }
     const checklist = (Array.isArray(t.checklist) ? t.checklist : []).map((item) => {
       if (!item || !validId(item.id)) throw new Error("Invalid checklist item.");
       return {
         id: item.id, title: text(item.title, 160),
         done: item.done === true, dueDate: safeDate(item.dueDate ?? ""),
+        category: optionalText(item.category, 60) || "Preparation",
+        priority: ["Low","Normal","High"].includes(item.priority)
+          ? item.priority : "Normal",
       };
     });
     if (checklist.length > 100) throw new Error("Too many checklist tasks.");
@@ -112,6 +136,21 @@
     if (startMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) {
       throw new Error("Invalid starting month.");
     }
+    const categorySource = t.budgetCategories ?? {};
+    if (!categorySource || typeof categorySource !== "object" ||
+        Array.isArray(categorySource) ||
+        Object.keys(categorySource).length > 40) {
+      throw new Error("Invalid budget categories.");
+    }
+    const budgetCategories = Object.create(null);
+    for (const [category, allocation] of Object.entries(categorySource)) {
+      if (!text(category,70)) throw new Error("Empty budget category.");
+      budgetCategories[category] = number(allocation);
+    }
+    const checkedUsdWallet=window.voyafundraV2Core?.ensureUsdSavingsCovered({
+      ...t, people, savings, usdPurchases
+    });
+    if(!checkedUsdWallet)throw new Error("Could not validate USD savings in backup.");
     return {
       id: t.id,
       name: text(t.name, 160),
@@ -124,10 +163,32 @@
       monthCount,
       notes: optionalText(t.notes, 4000),
       createdAt: optionalText(t.createdAt, 60),
-      people, options, savings, checklist,
+      people, options, savings, checklist, budgetCategories, usdPurchases,
+      schemaVersion: 2,
       personA: optionalText(t.personA, 120),
       personB: optionalText(t.personB, 120),
     };
+  }
+
+
+  function validateExpense(item) {
+    if (!item || !validId(item.id) || !validId(item.trip_id)) {
+      throw new Error("Invalid expense record.");
+    }
+    const safe = window.voyafundraV2Core?.expenseInput(item);
+    if (!safe) throw new Error("Expense parser unavailable.");
+    if (Math.abs(Number(item.amount_mvr)-safe.amount_mvr)>0.01) {
+      throw new Error("Expense currency conversion is inconsistent.");
+    }
+    return {id:item.id, trip_id:item.trip_id, ...safe};
+  }
+  function validatePlan(item) {
+    if (!item || !validId(item.id) || !validId(item.trip_id)) {
+      throw new Error("Invalid itinerary record.");
+    }
+    const safe = window.voyafundraV2Core?.itineraryInput(item);
+    if (!safe) throw new Error("Itinerary parser unavailable.");
+    return {id:item.id, trip_id:item.trip_id, ...safe};
   }
 
   function parseBackup(raw, userId) {
@@ -137,24 +198,38 @@
     let parsed;
     try { parsed = JSON.parse(raw); }
     catch { throw new Error("The selected file is not valid JSON."); }
-    if (!parsed || parsed.format !== FORMAT ||
-        !validId(parsed.account_id) || parsed.account_id !== userId ||
-        !Array.isArray(parsed.trips) || parsed.trips.length > MAX_TRIPS) {
+    const legacy=parsed?.format===LEGACY_FORMAT;
+    if (!parsed || (!legacy && parsed.format!==FORMAT) ||
+        !validId(parsed.account_id) || parsed.account_id!==userId ||
+        !Array.isArray(parsed.trips) || parsed.trips.length>MAX_TRIPS) {
       throw new Error("This is not a supported backup for the signed-in account.");
     }
-    const tripList = parsed.trips.map(validateTrip);
-    const ids = tripList.map((item) => item.id);
-    if (new Set(ids).size !== ids.length) {
-      throw new Error("Backup contains duplicate trip IDs.");
+    if (!legacy && (!Array.isArray(parsed.expenses) ||
+        !Array.isArray(parsed.plan_items) ||
+        parsed.expenses.length>MAX_RECORDS ||
+        parsed.plan_items.length>MAX_RECORDS)) {
+      throw new Error("Invalid version 2 records or size.");
     }
-    return { format: FORMAT, account_id: parsed.account_id, trips: tripList };
+    const tripList=parsed.trips.map(validateTrip);
+    const expenses=(legacy?[]:parsed.expenses).map(validateExpense);
+    const plan_items=(legacy?[]:parsed.plan_items).map(validatePlan);
+    for (const records of [tripList,expenses,plan_items]) {
+      const ids=records.map(item=>item.id);
+      if (new Set(ids).size!==ids.length) {
+        throw new Error("Backup contains duplicate record IDs.");
+      }
+    }
+    return {
+      format:parsed.format,account_id:parsed.account_id,
+      trips:tripList,expenses,plan_items
+    };
   }
 
   function readyForTransfer() {
     if (!cloudReady || !cloudUserId || cloudWritesPending > 0 ||
         cloudSaveError || cloudUnsavedTripIds.size ||
         cloudRecoveryPendingDrafts.length || cloudRecoveryReadError ||
-        restoring) {
+        window.voyafundraV2?.status?.().unconfirmed || restoring) {
       throw new Error("Resolve all pending, failed, or recovered trip edits first.");
     }
     if (!document.getElementById("modalLayer")?.classList.contains("hidden")) {
@@ -190,24 +265,32 @@
       const userId = cloudUserId;
       const epoch = cloudEpoch;
       await verifyAccount(userId);
-      // Always read cloud records rather than exporting possibly stale UI state.
-      const { data, error } = await supabaseClient.from("trips")
-        .select("id, trip_data").eq("user_id", userId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+      // Read independently from Supabase, never export stale dashboard caches.
+      const [tripResult,expenseResult,planResult]=await Promise.all([
+        supabaseClient.from("trips").select("id, trip_data")
+          .eq("user_id",userId).order("created_at",{ascending:false}),
+        supabaseClient.from("trip_expenses").select("*")
+          .eq("user_id",userId).order("expense_date",{ascending:false}),
+        supabaseClient.from("trip_plan_items").select("*")
+          .eq("user_id",userId).order("start_date",{ascending:true}),
+      ]);
+      if (tripResult.error || expenseResult.error || planResult.error) {
+        throw tripResult.error||expenseResult.error||planResult.error;
+      }
       if (epoch !== cloudEpoch || cloudUserId !== userId) {
         throw new Error("Account changed during export.");
       }
-      const saved = (data || []).map((row) => validateTrip({
-        ...row.trip_data, id: row.id,
+      const saved=(tripResult.data||[]).map(row=>validateTrip({
+        ...row.trip_data,id:row.id
       }));
-      if (saved.length > MAX_TRIPS) throw new Error("Too many trips to export.");
+      const expenses=(expenseResult.data||[]).map(validateExpense);
+      const plan_items=(planResult.data||[]).map(validatePlan);
+      if(saved.length>MAX_TRIPS||expenses.length>MAX_RECORDS||
+        plan_items.length>MAX_RECORDS)throw Error("Backup exceeds record limits.");
       download({
-        format: FORMAT,
-        created_at: new Date().toISOString(),
-        account_id: userId,
-        trips: saved,
-      }, "voyafundra-all-trips-" + new Date().toISOString().slice(0, 10) + ".json");
+        format:FORMAT,created_at:new Date().toISOString(),
+        account_id:userId,trips:saved,expenses,plan_items
+      },"voyafundra-complete-backup-"+new Date().toISOString().slice(0,10)+".json");
       message.textContent = "Backup download requested. Keep the file private.";
     } catch (error) {
       message.textContent = "Export failed: " + (error.message || String(error));
@@ -218,18 +301,26 @@
 
   function updatePreview() {
     if (!candidate) {
-      preview.textContent = "Choose a Voyafundra full backup to preview its contents.";
-      restoreBtn.disabled = true;
+      preview.textContent="Choose a Voyafundra backup to preview its contents.";
+      restoreBtn.disabled=true;
       return;
     }
-    const existing = new Set(trips.map((item) => item.id));
-    const missing = candidate.trips.filter((item) => !existing.has(item.id));
-    preview.textContent = candidate.trips.length + " trip(s) in backup; " +
-      missing.length + " missing trip(s) eligible to restore. Existing trips " +
-      "will be skipped without overwriting.\n" +
-      missing.map((item) => "• " + item.name + " — " + item.destination)
-        .join("\n");
-    restoreBtn.disabled = !missing.length || !approval.checked || restoring;
+    const currentTrips=new Set(trips.map(x=>x.id));
+    const v2=window.voyafundraV2?.exportRows?.()||{expenses:[],plan_items:[]};
+    const expenseKeys=new Set(v2.expenses.map(x=>x.trip_id+"|"+x.id));
+    const planKeys=new Set(v2.plan_items.map(x=>x.trip_id+"|"+x.id));
+    const missingTrip=candidate.trips.filter(x=>!currentTrips.has(x.id));
+    const missingExpense=candidate.expenses.filter(x=>!expenseKeys.has(x.trip_id+"|"+x.id));
+    const missingPlan=candidate.plan_items.filter(x=>!planKeys.has(x.trip_id+"|"+x.id));
+    preview.textContent =
+      candidate.format+" backup:\n"+
+      candidate.trips.length+" trips ("+missingTrip.length+" possibly missing)\n"+
+      candidate.expenses.length+" expense entries ("+missingExpense.length+" possibly missing)\n"+
+      candidate.plan_items.length+" itinerary entries ("+missingPlan.length+" possibly missing)\n"+
+      "Existing record IDs are never overwritten. Missing records are checked again on Supabase before restore.\n"+
+      missingTrip.map(x=>"• "+x.name+" — "+x.destination).join("\n");
+    restoreBtn.disabled=(!missingTrip.length&&!missingExpense.length&&
+      !missingPlan.length)||!approval.checked||restoring;
   }
 
   async function readFile() {
@@ -253,46 +344,82 @@
   async function restoreMissing() {
     if (!candidate || !approval.checked || restoring) return;
     readyForTransfer();
-    const userId = cloudUserId;
-    if (candidate.account_id !== userId) throw new Error("Wrong account backup.");
-    const missing = candidate.trips.filter((t) => !trips.some((live) => live.id === t.id));
-    if (!missing.length) return updatePreview();
-    if (!window.confirm("Restore " + missing.length + " missing trip(s) to this " +
-      "account? Existing trips are never replaced. Continue?")) return;
-
-    restoring = true;
+    const userId=cloudUserId;
+    if(candidate.account_id!==userId)throw Error("Wrong account backup.");
+    if(!window.confirm("Restore ONLY missing trips, expense entries and itinerary "+
+      "records from this backup? Existing records will not be overwritten."))return;
+    restoring=true;
     cloudWritesPending++;
     cloudWriteGeneration++;
-    restoreBtn.disabled = true;
-    let restored = 0;
-    try {
-      const epoch = cloudEpoch;
+    restoreBtn.disabled=true;
+    const count={trips:0,expenses:0,plan_items:0};
+    try{
+      const epoch=cloudEpoch;
       await verifyAccount(userId);
-      for (const trip of missing) {
-        if (epoch !== cloudEpoch || userId !== cloudUserId) {
-          throw new Error("Account changed during restore.");
-        }
-        const { data, error } = await supabaseClient.from("trips")
-          .insert({ id: trip.id, user_id: userId, trip_data: trip })
-          .select("id, updated_at, revision");
-        if (error) throw error;
-        if (!data || data.length !== 1) throw new Error("Restore wasn't confirmed.");
-        cloudTripVersions.set(trip.id, data[0].updated_at);
-        cloudTripRevisions.set(trip.id, data[0].revision);
-        trips.unshift(trip);
-        restored++;
-        render();
+      // Query current cloud IDs; this matters when another device has added
+      // a record since the preview. Conflicting INSERTs fail safely.
+      const [tripResult,expResult,planResult]=await Promise.all([
+        supabaseClient.from("trips").select("id").eq("user_id",userId),
+        supabaseClient.from("trip_expenses").select("id,trip_id").eq("user_id",userId),
+        supabaseClient.from("trip_plan_items").select("id,trip_id").eq("user_id",userId)
+      ]);
+      if(tripResult.error||expResult.error||planResult.error)
+        throw tripResult.error||expResult.error||planResult.error;
+      if(epoch!==cloudEpoch||cloudUserId!==userId)
+        throw Error("Account changed during restore.");
+      const tripIds=new Set((tripResult.data||[]).map(x=>x.id));
+      const expIds=new Set((expResult.data||[]).map(x=>x.trip_id+"|"+x.id));
+      const planIds=new Set((planResult.data||[]).map(x=>x.trip_id+"|"+x.id));
+
+      for(const trip of candidate.trips){
+        if(tripIds.has(trip.id))continue;
+        if(epoch!==cloudEpoch||cloudUserId!==userId)
+          throw Error("Account changed during restore.");
+        const {data,error}=await supabaseClient.from("trips").insert({
+          id:trip.id,user_id:userId,trip_data:trip
+        }).select("id,updated_at,revision");
+        if(error)throw error;
+        if(!data||data.length!==1)throw Error("Trip insertion not confirmed.");
+        tripIds.add(trip.id);
+        cloudTripVersions.set(trip.id,data[0].updated_at);
+        cloudTripRevisions.set(trip.id,data[0].revision);
+        trips.unshift(trip);count.trips++;
       }
-      message.textContent = restored + " missing trip(s) restored. Existing trips unchanged.";
-      candidate = null;
-      importInput.value = "";
-      approval.checked = false;
-    } catch (error) {
-      message.textContent = restored + " restored before an error: " +
-        (error.message || String(error)) + ". Refresh after verifying cloud status.";
-    } finally {
-      restoring = false;
-      cloudWritesPending = Math.max(0, cloudWritesPending - 1);
+      for(const [table,records,known,kind] of [
+        ["trip_expenses",candidate.expenses,expIds,"expenses"],
+        ["trip_plan_items",candidate.plan_items,planIds,"plan_items"]
+      ]){
+        for(const record of records){
+          const key=record.trip_id+"|"+record.id;
+          if(known.has(key))continue;
+          if(!tripIds.has(record.trip_id)) {
+            throw Error("Backup contains a record without a valid parent trip.");
+          }
+          if(epoch!==cloudEpoch||cloudUserId!==userId)
+            throw Error("Account changed during restore.");
+          const {data,error}=await supabaseClient.from(table).insert({
+            ...record,user_id:userId
+          }).select("id");
+          if(error)throw error;
+          if(!data||data.length!==1)throw Error("Record insertion not confirmed.");
+          known.add(key);count[kind]++;
+        }
+      }
+      await window.voyafundraV2?.reload?.();
+      render();
+      message.textContent="Restore confirmed: "+count.trips+" trips, "+
+        count.expenses+" expenses, "+count.plan_items+
+        " itinerary entries. Existing records were not overwritten.";
+      candidate=null;importInput.value="";approval.checked=false;
+    }catch(error){
+      message.textContent="Partial restore: "+count.trips+" trips, "+
+        count.expenses+" expenses and "+count.plan_items+
+        " itinerary entries inserted before an error: "+(error.message||String(error))+
+        ". No existing records were overwritten. Verify cloud status before retrying.";
+      await window.voyafundraV2?.reload?.();
+    }finally{
+      restoring=false;
+      cloudWritesPending=Math.max(0,cloudWritesPending-1);
       updatePreview();
     }
   }

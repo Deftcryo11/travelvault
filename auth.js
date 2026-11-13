@@ -352,18 +352,27 @@ async function logoutUser(isAutomatic = false) {
     if (cloudWritesPending > 0 || window.voyafundraBackup?.isBusy?.()) {
       throw new Error("Wait for the backup restore or current saves to finish.");
     }
+    // Full-account restoration uses its own write loop rather than the
+    // ordinary per-trip queue. Never sign out while those writes are active.
+    if (cloudWritesPending > 0 || window.voyafundraBackup?.isBusy?.()) {
+      throw new Error("Wait for the current trip save or backup restore to finish.");
+    }
+
     const openEditor = !document.getElementById("modalLayer")
       ?.classList.contains("hidden");
     if (openEditor) {
       throw new Error("Close or save the open form before signing out.");
     }
 
+    const v2Status = window.voyafundraV2?.status?.();
     const unconfirmed = !!cloudSaveError || cloudUnsavedTripIds.size > 0 ||
-      cloudRecoveryPendingDrafts.length > 0 || !!cloudRecoveryReadError;
+      cloudRecoveryPendingDrafts.length > 0 || !!cloudRecoveryReadError ||
+      !!v2Status?.unconfirmed;
     if (unconfirmed) {
       if (!isAutomatic) {
         window.voyafundraUX?.showRecovery?.();
         window.voyafundraUX?.showDrafts?.();
+        window.voyafundraV2?.showDrafts?.();
         throw new Error(
           "Some trip changes have not been confirmed by Supabase. " +
           "Review the saved drafts or conflicts before logging out."
@@ -377,7 +386,8 @@ async function logoutUser(isAutomatic = false) {
         window.voyafundraDrafts.covers(userId,
           Array.from(cloudUnsavedTripIds));
       if (!stored || cloudRecoveryStorageFaults.size > 0 ||
-          cloudRecoveryReadError) {
+          cloudRecoveryReadError || v2Status?.protected === false ||
+          (v2Status?.writes || 0) > 0) {
         throw new Error(
           "Session expiration delayed: unconfirmed edits have no verified local backup."
         );

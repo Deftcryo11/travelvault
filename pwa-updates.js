@@ -21,6 +21,8 @@
     "trip-calendar.js", "trip-calendar.css", "conflict-recovery.js",
     "recovery-drafts.js", "trip-insights.js", "trip-features.js",
     "trip-features.css", "trip-backup.js",
+    "trip-v2.js", "trip-v2-core.js", "trip-v2-drafts.js",
+    "trip-v2.css",
     "pwa-updates.js", "manifest.webmanifest"
   ];
   const CHECK_INTERVAL_MS = 120000;
@@ -89,6 +91,9 @@
       if (typeof cloudRecoveryReadError !== "undefined" &&
           cloudRecoveryReadError) {
         return "Recovery storage must be checked before updating.";
+      }
+      if (window.voyafundraV2?.status?.().unconfirmed) {
+        return "Resolve unconfirmed expense and itinerary drafts before updating.";
       }
     }
     const modal = document.getElementById("modalLayer");
