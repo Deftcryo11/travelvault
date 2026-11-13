@@ -779,8 +779,11 @@
     if(!canStartTripEdit(trip.id)&&
       /^(expense|plan|category|usd-)/.test(action))return;
     if(action==="usd-buy")return usdPurchaseForm(trip);
-    if(action==="usd-edit")return usdPurchaseForm(trip,
-      (trip.usdPurchases||[]).find(x=>x.id===id));
+    if(action==="usd-edit") {
+      const purchase=(trip.usdPurchases||[]).find(x=>x.id===id);
+      if(!purchase)return notify("USD purchase no longer exists. Refresh this trip.");
+      return usdPurchaseForm(trip,purchase);
+    }
     if(action==="usd-delete")return deleteUsdPurchase(trip,id);
     if(action==="expense-new")return expenseForm(trip);
     if(action==="expense-edit")return expenseForm(trip,
