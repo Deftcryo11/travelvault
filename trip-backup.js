@@ -94,6 +94,25 @@
       };
     });
     if (savings.length > 120) throw new Error("Too many savings entries.");
+    const usdPurchases = (Array.isArray(t.usdPurchases) ? t.usdPurchases : [])
+      .map((purchase) => {
+        if(!purchase || !validId(purchase.id)) {
+          throw new Error("Invalid USD savings purchase ID.");
+        }
+        if(!window.voyafundraV2Core?.usdPurchaseInput) {
+          throw new Error("USD savings validation is unavailable.");
+        }
+        const parsed=window.voyafundraV2Core.usdPurchaseInput(purchase);
+        if(!Number.isFinite(Number(purchase.mvrCost)) ||
+           Math.abs(Number(purchase.mvrCost)-parsed.mvrCost)>0.005) {
+          throw new Error("Backup USD purchase MVR cost does not match its saved rate.");
+        }
+        return {id:purchase.id,...parsed};
+      });
+    if (usdPurchases.length > 250 ||
+        new Set(usdPurchases.map(item => item.id)).size !== usdPurchases.length) {
+      throw new Error("Backup has too many or duplicate USD purchases.");
+    }
     const checklist = (Array.isArray(t.checklist) ? t.checklist : []).map((item) => {
       if (!item || !validId(item.id)) throw new Error("Invalid checklist item.");
       return {
@@ -128,6 +147,10 @@
       if (!text(category,70)) throw new Error("Empty budget category.");
       budgetCategories[category] = number(allocation);
     }
+    const checkedUsdWallet=window.voyafundraV2Core?.ensureUsdSavingsCovered({
+      ...t, people, savings, usdPurchases
+    });
+    if(!checkedUsdWallet)throw new Error("Could not validate USD savings in backup.");
     return {
       id: t.id,
       name: text(t.name, 160),
@@ -140,7 +163,7 @@
       monthCount,
       notes: optionalText(t.notes, 4000),
       createdAt: optionalText(t.createdAt, 60),
-      people, options, savings, checklist, budgetCategories,
+      people, options, savings, checklist, budgetCategories, usdPurchases,
       schemaVersion: 2,
       personA: optionalText(t.personA, 120),
       personB: optionalText(t.personB, 120),
