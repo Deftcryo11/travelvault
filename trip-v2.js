@@ -196,8 +196,10 @@
       (purchases.length?'<div class="vf2-record-list">'+purchases.map(p=>
         '<article class="vf2-record"><div><h3>'+
         h(usd(p.usdAmount))+' · '+h(people.get(p.personId)||"Unknown saver")+
-        '</h3><p>'+h(p.purchaseDate)+' · '+h(Number(p.mvrPerUsd).toFixed(4))+
-        ' MVR per USD</p>'+
+        '</h3><p>'+h(p.purchaseDate)+' · '+
+        h(Number(p.mvrPerUsd).toLocaleString("en-US",{
+          minimumFractionDigits:2,maximumFractionDigits:6
+        }))+' MVR per USD</p>'+
         (p.note?'<small>'+h(p.note)+'</small>':"")+
         '</div><div class="vf2-record-right"><small>MVR deducted</small>'+
         '<strong>'+h(m(p.mvrCost))+'</strong>'+
