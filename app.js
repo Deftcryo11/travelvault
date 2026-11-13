@@ -773,6 +773,18 @@ function tripCard(trip) {
 
       ${window.voyafundraFeatures?.cardCountdown(trip) || ''}
 
+      ${(trip.usdPurchases || []).length
+        ? (() => {
+            const wallet = window.voyafundraV2Core?.usdSavingsWallet(trip);
+            return wallet
+              ? `<div class="vf2-trip-currency">
+                  <span>Available MVR: <strong>${money(wallet.mvrAvailable)}</strong></span>
+                  <span>USD held: <strong>USD ${wallet.usdHeld.toFixed(2)}</strong></span>
+                </div>`
+              : "";
+          })()
+        : ""}
+
       ${progressBar(progress)}
 
       <div class="progress-caption">
@@ -1412,7 +1424,7 @@ function renderSavingsTracker(trip) {
 
   html += `
     <div class="rate-info">
-      Savings remaining:
+      Savings target still to reach:
       <strong>
         ${money(Math.max(0, num(trip.budget) - totalSaved(trip)))}
       </strong>.
