@@ -165,3 +165,48 @@ test("complete backup export reads all three tables and imports never overwrite"
   assert.doesNotMatch(js,/\.upsert\(/);
   assert.doesNotMatch(js,/\.delete\(\)/);
 });
+
+
+test("V2 backups retain USD savings purchases with their original bank rates",()=>{
+  const api=setup().api;
+  const t=trip();
+  t.usdPurchases=[{
+    id:"usd-1",personId:"p-1",purchaseDate:"2026-11-13",
+    usdAmount:100,mvrPerUsd:15.42,mvrCost:1542,note:"Bank promotion"
+  }];
+  const json=JSON.stringify({
+    format:"voyafundra-trip-backup-v2",account_id:"account-1",
+    trips:[t],expenses:[],plan_items:[]
+  });
+  const parsed=api.parseBackup(json,"account-1");
+  assert.equal(parsed.trips[0].usdPurchases.length,1);
+  assert.equal(parsed.trips[0].usdPurchases[0].usdAmount,100);
+  assert.equal(parsed.trips[0].usdPurchases[0].mvrPerUsd,15.42);
+  assert.equal(parsed.trips[0].usdPurchases[0].mvrCost,1542);
+  assert.equal(parsed.trips[0].savings[0].contributions["p-1"].saved,2000);
+  assert.equal(parsed.trips[0].usdPurchases[0].note,"Bank promotion");
+});
+
+test("V2 backups reject tampered rates, overdrafts, and repeated USD purchase IDs",()=>{
+  const api=setup().api;
+  const row={id:"usd-1",personId:"p-1",purchaseDate:"2026-11-13",
+    usdAmount:100,mvrPerUsd:15.42,mvrCost:1542,note:""};
+  const format=t=>JSON.stringify({
+    format:"voyafundra-trip-backup-v2",account_id:"account-1",
+    trips:[t],expenses:[],plan_items:[]
+  });
+  assert.throws(()=>api.parseBackup(format({
+    ...trip(),usdPurchases:[{...row,mvrCost:1400}]
+  }),"account-1"),/does not match/);
+  assert.throws(()=>api.parseBackup(format({
+    ...trip(),usdPurchases:[{...row,usdAmount:200,mvrCost:3084}]
+  }),"account-1"),/more USD than/);
+  assert.throws(()=>api.parseBackup(format({
+    ...trip(),usdPurchases:[row,row]
+  }),"account-1"),/duplicate USD/);
+});
+
+test("legacy backups without USD purchases remain supported",()=>{
+  const data=setup().api.parseBackup(wrap([trip()]),"account-1");
+  assert.equal(data.trips[0].usdPurchases.length,0);
+});
