@@ -15,6 +15,12 @@ Voyafundra is a responsive travel budget, savings and checklist planner. The fro
   with saved bank-rate snapshots, category allocations, and expense CSV exports.
 - Trip itineraries and bookings with day-by-day plans, provider references,
   local travel times, confirmation status and costs kept separate from spending.
+- USD savings purchases: buy dollars from already-recorded MVR savings at
+  a manually entered bank rate on each transaction. A saver’s available MVR
+  decreases by USD bought × its own stored rate, and USD held increases.
+  Conversion is **not** extra savings or a trip expense. Purchase history
+  supports editing/deletion, preserves different exchange rates, and is
+  included in full backups and trip reports.
 - Saved-by-person forecasts and reusable travel checklist templates with
   categories, priorities and overdue indicators.
 - Per-trip printable/JSON reports and a Settings & Data screen.
